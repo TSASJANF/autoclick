@@ -14,6 +14,13 @@ runs/
 # IDE / tooling
 .codegraph/
 .claude/
+.vscode/
+.idea/
 
 # Runtime artifacts
 logs/
+
+# 个人运行时数据（首次运行自动生成，不入库；避免泄露本地路径/窗口标题）
+config.json
+targets.json
+app_state.json

@@ -90,3 +90,30 @@ python tests/visual_check.py     # 各页签截图输出到 logs/ui_shots/
 - `data/screenshots/` — 截图输出
 - `logs/app.log` — 运行日志
 - `targets.json` / `config.json` / `app_state.json` — 持久化状态
+
+> **隐私说明**：`config.json`、`targets.json`、`app_state.json`、`data/`、
+> `runs/`、`logs/` 均为**个人运行时数据**，已在 `.gitignore` 中排除、不会
+> 上传到仓库；首次运行时自动生成默认配置。请勿把自己的本地路径、窗口标题、
+> 屏幕截图提交到公开仓库。
+
+## 第三方组件与许可证
+
+本项目自身代码采用 [MIT](LICENSE)。运行时依赖的第三方组件各有其许可证，
+分发二进制时请一并遵守：
+
+| 组件 | 用途 | 许可证 |
+|---|---|---|
+| PySide6 | Qt GUI 框架 | LGPL-3.0 |
+| PySide6-Fluent-Widgets | Fluent Design 组件库 | GPL-3.0 |
+| ultralytics | YOLO 检测/训练 | AGPL-3.0 |
+| opencv-python | 模板匹配/图像处理 | Apache-2.0 |
+| mss | 屏幕截图 | MIT |
+| numpy | 数值计算 | BSD-3-Clause |
+
+> 由于依赖 GPL/AGPL 组件（Fluent-Widgets / ultralytics），若你**分发**
+> 打包后的可执行程序，整体需按相应 copyleft 条款提供源码。仅分享本仓库
+> 源码（MIT）不受影响。
+
+## 许可证
+
+本项目代码基于 [MIT License](LICENSE)。
