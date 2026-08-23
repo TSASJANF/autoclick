@@ -52,8 +52,8 @@ class TrainTab(ScrollArea):
         content = QWidget()
         self.setWidget(content)
         root = QVBoxLayout(content)
-        root.setContentsMargins(20, 16, 20, 24)
-        root.setSpacing(12)
+        root.setContentsMargins(14, 10, 14, 14)
+        root.setSpacing(8)
 
         title = QLabel("训练")
         title.setObjectName("heading")
@@ -69,8 +69,8 @@ class TrainTab(ScrollArea):
     def _card(self, title: str) -> tuple[CardWidget, QVBoxLayout]:
         card = CardWidget()
         lay = QVBoxLayout(card)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(12)
+        lay.setContentsMargins(14, 10, 14, 10)
+        lay.setSpacing(8)
         if title:
             lay.addWidget(SubtitleLabel(title))
         return card, lay
@@ -92,9 +92,9 @@ class TrainTab(ScrollArea):
     def _build_params_card(self) -> CardWidget:
         card, lay = self._card("训练参数")
 
-        lay.addWidget(BodyLabel("基础模型"))
         model_row = QHBoxLayout()
         model_row.setSpacing(8)
+        model_row.addWidget(BodyLabel("基础模型"))
         self.model_combo = QComboBox()
         self.model_combo.setEditable(True)
         self.model_combo.addItems(["yolov8n.pt", "yolov8s.pt", "yolov8m.pt"])
@@ -104,9 +104,9 @@ class TrainTab(ScrollArea):
         model_row.addWidget(browse_model_btn)
         lay.addLayout(model_row)
 
-        lay.addWidget(BodyLabel("模型保存位置"))
         save_row = QHBoxLayout()
         save_row.setSpacing(8)
+        save_row.addWidget(BodyLabel("保存位置"))
         self.save_path_edit = LineEdit()
         self.save_path_edit.setPlaceholderText("留空则使用默认路径 (runs/detect/train/weights/)")
         browse_save_btn = PushButton(FluentIcon.FOLDER, "浏览...")
@@ -115,30 +115,43 @@ class TrainTab(ScrollArea):
         save_row.addWidget(browse_save_btn)
         lay.addLayout(save_row)
 
-        lay.addWidget(BodyLabel("训练轮数 (epochs)"))
+        # 训练轮数 / 批次 / 图片尺寸：标签旁控件，两行三组紧凑排列
         self.epochs_spin = SpinBox()
         self.epochs_spin.setRange(1, 1000)
         self.epochs_spin.setValue(50)
-        lay.addWidget(self.epochs_spin)
-
-        lay.addWidget(BodyLabel("批次大小 (batch)"))
         self.batch_spin = SpinBox()
         self.batch_spin.setRange(1, 64)
         self.batch_spin.setValue(16)
-        lay.addWidget(self.batch_spin)
-
-        lay.addWidget(BodyLabel("图片尺寸 (imgsz)"))
         self.imgsize_spin = SpinBox()
         self.imgsize_spin.setRange(320, 1280)
         self.imgsize_spin.setValue(640)
         self.imgsize_spin.setSingleStep(32)
-        lay.addWidget(self.imgsize_spin)
+
+        params_row1 = QHBoxLayout()
+        params_row1.setSpacing(8)
+        params_row1.addWidget(BodyLabel("训练轮数"))
+        self.epochs_spin.setMaximumWidth(100)
+        params_row1.addWidget(self.epochs_spin)
+        params_row1.addSpacing(16)
+        params_row1.addWidget(BodyLabel("批次大小"))
+        self.batch_spin.setMaximumWidth(100)
+        params_row1.addWidget(self.batch_spin)
+        params_row1.addStretch()
+        lay.addLayout(params_row1)
+
+        params_row2 = QHBoxLayout()
+        params_row2.setSpacing(8)
+        params_row2.addWidget(BodyLabel("图片尺寸"))
+        self.imgsize_spin.setMaximumWidth(100)
+        params_row2.addWidget(self.imgsize_spin)
+        params_row2.addStretch()
+        lay.addLayout(params_row2)
         return card
 
     def _build_control_card(self) -> CardWidget:
         card, lay = self._card("控制")
         row = QHBoxLayout()
-        row.setSpacing(12)
+        row.setSpacing(8)
         self.train_btn = PrimaryPushButton(FluentIcon.PLAY, "开始训练")
         self.train_btn.clicked.connect(self._start_training)
         row.addWidget(self.train_btn)

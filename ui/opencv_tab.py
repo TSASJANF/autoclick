@@ -36,7 +36,7 @@ COL_COLOR, COL_NAME, COL_THRESHOLD, COL_STATUS = 0, 1, 2, 3
 SCREENSHOTS_DIR = os.path.join("data", "screenshots", "opencv")
 
 
-class OpenCVTab(ScrollArea):
+class OpenCVTab(QWidget):
     def __init__(self, ctx: AppContext, parent=None):
         super().__init__(parent)
         self.setObjectName("opencvInterface")
@@ -51,23 +51,24 @@ class OpenCVTab(ScrollArea):
     # ========== UI ==========
 
     def _init_ui(self):
-        self.setWidgetResizable(True)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # 双栏：左截取画布，右侧可滚动模板管理 —— 更紧凑
+        root = QHBoxLayout(self)
+        root.setContentsMargins(14, 10, 14, 14)
+        root.setSpacing(10)
 
-        content = QWidget()
-        self.setWidget(content)
-        root = QVBoxLayout(content)
-        root.setContentsMargins(20, 16, 20, 24)
-        root.setSpacing(12)
+        root.addWidget(self._build_capture_card(), 3)
 
-        title = QLabel("OpenCV 模板")
-        title.setObjectName("heading")
-        root.addWidget(title)
-        root.addWidget(QLabel("无需训练的轻量检测方案：截图 → 框选模板区域 → 测试匹配"))
-
-        root.addWidget(self._build_capture_card())
-        root.addWidget(self._build_template_card())
-        root.addStretch()
+        right_scroll = ScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        right_content = QWidget()
+        right_scroll.setWidget(right_content)
+        right_lay = QVBoxLayout(right_content)
+        right_lay.setContentsMargins(0, 0, 4, 0)
+        right_lay.setSpacing(8)
+        right_lay.addWidget(self._build_template_card())
+        right_lay.addStretch()
+        root.addWidget(right_scroll, 2)
 
         self.screenshot_shortcut = QShortcut(QKeySequence("F12"), self)
         self.screenshot_shortcut.activated.connect(self._take_screenshot)
@@ -75,8 +76,8 @@ class OpenCVTab(ScrollArea):
     def _card(self, title: str) -> tuple[CardWidget, QVBoxLayout]:
         card = CardWidget()
         lay = QVBoxLayout(card)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(12)
+        lay.setContentsMargins(14, 10, 14, 10)
+        lay.setSpacing(8)
         if title:
             lay.addWidget(SubtitleLabel(title))
         return card, lay

@@ -48,7 +48,7 @@ def _status_item(image_path: str, status: str) -> QListWidgetItem:
     return item
 
 
-class AnnotateTab(ScrollArea):
+class AnnotateTab(QWidget):
     sample_set_renamed = Signal(str)
 
     def __init__(self, ctx: AppContext, parent=None):
@@ -74,27 +74,28 @@ class AnnotateTab(ScrollArea):
     # ========== UI ==========
 
     def _init_ui(self):
-        self.setWidgetResizable(True)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # 双栏：左画布，右侧可滚动面板 —— 看图与操作同屏，更紧凑
+        root = QHBoxLayout(self)
+        root.setContentsMargins(14, 10, 14, 14)
+        root.setSpacing(10)
 
-        content = QWidget()
-        self.setWidget(content)
-        root = QVBoxLayout(content)
-        root.setContentsMargins(20, 16, 20, 24)
-        root.setSpacing(12)
+        root.addWidget(self._build_canvas_card(), 3)
 
-        title = QLabel("标注")
-        title.setObjectName("heading")
-        root.addWidget(title)
-        root.addWidget(QLabel("采集屏幕样本 → 为目标拖框标注 → 保存；快捷键 A 上一张 / D 下一张 / S 保存并下一张"))
-
-        root.addWidget(self._build_set_card())
-        root.addWidget(self._build_canvas_card())
-        root.addWidget(self._build_target_card())
-        root.addWidget(self._build_image_list_card())
-        root.addWidget(self._build_box_card())
-        root.addWidget(self._build_info_card())
-        root.addStretch()
+        right_scroll = ScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        right_content = QWidget()
+        right_scroll.setWidget(right_content)
+        right_lay = QVBoxLayout(right_content)
+        right_lay.setContentsMargins(0, 0, 4, 0)
+        right_lay.setSpacing(8)
+        right_lay.addWidget(self._build_set_card())
+        right_lay.addWidget(self._build_target_card())
+        right_lay.addWidget(self._build_image_list_card())
+        right_lay.addWidget(self._build_box_card())
+        right_lay.addWidget(self._build_info_card())
+        right_lay.addStretch()
+        root.addWidget(right_scroll, 2)
 
         self.screenshot_shortcut = QShortcut(QKeySequence("F12"), self)
         self.screenshot_shortcut.activated.connect(self._take_screenshot)
@@ -102,8 +103,8 @@ class AnnotateTab(ScrollArea):
     def _card(self, title: str) -> tuple[CardWidget, QVBoxLayout]:
         card = CardWidget()
         lay = QVBoxLayout(card)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(12)
+        lay.setContentsMargins(14, 10, 14, 10)
+        lay.setSpacing(8)
         if title:
             lay.addWidget(SubtitleLabel(title))
         return card, lay
@@ -134,7 +135,7 @@ class AnnotateTab(ScrollArea):
         lay.addWidget(self.canvas)
 
         nav = QHBoxLayout()
-        nav.setSpacing(8)
+        nav.setSpacing(6)
         self.prev_btn = PushButton(FluentIcon.LEFT_ARROW, "上一张 (A)")
         self.prev_btn.clicked.connect(self._prev_image)
         self.prev_btn.setEnabled(False)
@@ -151,7 +152,7 @@ class AnnotateTab(ScrollArea):
         lay.addLayout(nav)
 
         action = QHBoxLayout()
-        action.setSpacing(8)
+        action.setSpacing(6)
         self.open_btn = PushButton(FluentIcon.FOLDER, "打开图片")
         self.open_btn.clicked.connect(self._open_image)
         action.addWidget(self.open_btn)

@@ -40,8 +40,8 @@ class SettingsTab(ScrollArea):
         content = QWidget()
         self.setWidget(content)
         root = QVBoxLayout(content)
-        root.setContentsMargins(20, 16, 20, 24)
-        root.setSpacing(12)
+        root.setContentsMargins(14, 10, 14, 14)
+        root.setSpacing(8)
 
         title = QLabel("设置")
         title.setObjectName("heading")
@@ -58,8 +58,8 @@ class SettingsTab(ScrollArea):
     def _card(self, title: str) -> tuple[CardWidget, QVBoxLayout]:
         card = CardWidget()
         lay = QVBoxLayout(card)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(14)
+        lay.setContentsMargins(14, 10, 14, 10)
+        lay.setSpacing(8)
         if title:
             lay.addWidget(SubtitleLabel(title))
         return card, lay
@@ -73,9 +73,9 @@ class SettingsTab(ScrollArea):
         self.default_path_cb.setChecked(self.config.get("screenshot_default_enabled", False))
         lay.addWidget(self.default_path_cb)
 
-        lay.addWidget(self._label("默认路径"))
         path_row = QHBoxLayout()
         path_row.setSpacing(8)
+        path_row.addWidget(self._label("默认路径"))
         self.path_edit = LineEdit()
         self.path_edit.setText(self.config.get("screenshot_default_path", "data/screenshots"))
         browse_btn = PushButton(FluentIcon.FOLDER, "浏览")
@@ -114,35 +114,47 @@ class SettingsTab(ScrollArea):
 
     def _build_hotkey_card(self) -> CardWidget:
         card, lay = self._card("快捷键设置")
-        lay.addWidget(self._label("开始/停止检测"))
+        hk_row = QHBoxLayout()
+        hk_row.setSpacing(8)
+        hk_row.addWidget(self._label("开始/停止检测"))
         self.hotkey_toggle_detection = QKeySequenceEdit()
         self.hotkey_toggle_detection.setKeySequence(
             self.config.get("hotkey_toggle_detection", "F9"))
-        lay.addWidget(self.hotkey_toggle_detection)
+        self.hotkey_toggle_detection.setMaximumWidth(200)
+        hk_row.addWidget(self.hotkey_toggle_detection)
+        hk_row.addStretch()
+        lay.addLayout(hk_row)
         lay.addWidget(QLabel("提示：点击输入框后按下想要设置的快捷键"))
         return card
 
     def _build_training_card(self) -> CardWidget:
         card, lay = self._card("训练数据设置")
-        lay.addWidget(self._label("负样本比例（占总训练集）"))
+        ratio_row = QHBoxLayout()
+        ratio_row.setSpacing(8)
+        ratio_row.addWidget(self._label("负样本比例"))
         self.negative_ratio_slider = Slider(Qt.Horizontal)
         self.negative_ratio_slider.setRange(10, 30)
         self.negative_ratio_slider.setValue(self.config.get("negative_sample_ratio", 20))
         self.negative_ratio_label = BodyLabel(f"{self.negative_ratio_slider.value()}%")
+        self.negative_ratio_label.setMinimumWidth(40)
         self.negative_ratio_slider.valueChanged.connect(
             lambda v: self.negative_ratio_label.setText(f"{v}%"))
-        ratio_row = QHBoxLayout()
         ratio_row.addWidget(self.negative_ratio_slider, 1)
         ratio_row.addWidget(self.negative_ratio_label)
         lay.addLayout(ratio_row)
-        lay.addWidget(QLabel("负样本 = 无目标标注的图片，可减少误报。占总训练集的比例。"))
+        lay.addWidget(QLabel("负样本 = 无目标标注的图片，可减少误报，占总训练集比例"))
 
-        lay.addWidget(self._label("最小正样本数"))
+        min_row = QHBoxLayout()
+        min_row.setSpacing(8)
+        min_row.addWidget(self._label("最小正样本数"))
         self.negative_min_spin = SpinBox()
         self.negative_min_spin.setRange(1, 100)
         self.negative_min_spin.setValue(self.config.get("negative_min_positive", 5))
-        lay.addWidget(self.negative_min_spin)
-        lay.addWidget(QLabel("正样本数量低于此值时，不添加负样本。"))
+        self.negative_min_spin.setMaximumWidth(110)
+        min_row.addWidget(self.negative_min_spin)
+        min_row.addStretch()
+        lay.addLayout(min_row)
+        lay.addWidget(QLabel("正样本数量低于此值时，不添加负样本"))
         return card
 
     def _build_save_row(self) -> CardWidget:

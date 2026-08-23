@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 COL_CHECK, COL_NAME, COL_PRIORITY, COL_MODEL, COL_SET = 0, 1, 2, 3, 4
 
 
-class DetectTab(ScrollArea):
+class DetectTab(QWidget):
     status_message = Signal(str)
     floating_window_requested = Signal(bool, bool)  # show, detecting
     add_target_requested = Signal()
@@ -59,28 +59,27 @@ class DetectTab(ScrollArea):
     # ========== UI 构建 ==========
 
     def _init_ui(self):
-        self.setWidgetResizable(True)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # 双栏：左预览（占大头），右侧可滚动控制区 —— 紧凑且利用横向空间
+        root = QHBoxLayout(self)
+        root.setContentsMargins(14, 10, 14, 14)
+        root.setSpacing(10)
 
-        content = QWidget()
-        self.setWidget(content)
-        root = QVBoxLayout(content)
-        root.setContentsMargins(20, 16, 20, 24)
-        root.setSpacing(12)
+        root.addWidget(self._build_preview_card(), 3)
 
-        # 标题
-        title = QLabel("检测")
-        title.setObjectName("heading")
-        root.addWidget(title)
-        sub = CaptionLabel("勾选目标 → 设置参数 → 开始检测；全局热键 F9 快速切换")
-        root.addWidget(sub)
-
-        root.addWidget(self._build_preview_card())
-        root.addWidget(self._build_target_card())
-        root.addWidget(self._build_settings_card())
-        root.addWidget(self._build_control_card())
-        root.addWidget(self._build_result_card())
-        root.addStretch()
+        right_scroll = ScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        right_content = QWidget()
+        right_scroll.setWidget(right_content)
+        right_lay = QVBoxLayout(right_content)
+        right_lay.setContentsMargins(0, 0, 4, 0)
+        right_lay.setSpacing(8)
+        right_lay.addWidget(self._build_target_card())
+        right_lay.addWidget(self._build_settings_card())
+        right_lay.addWidget(self._build_control_card())
+        right_lay.addWidget(self._build_result_card())
+        right_lay.addStretch()
+        root.addWidget(right_scroll, 2)
 
         self.screenshot_shortcut = QShortcut(QKeySequence("F12"), self)
         self.screenshot_shortcut.activated.connect(self._take_screenshot)
@@ -88,8 +87,8 @@ class DetectTab(ScrollArea):
     def _card(self, title: str) -> tuple[CardWidget, QVBoxLayout]:
         card = CardWidget()
         lay = QVBoxLayout(card)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(12)
+        lay.setContentsMargins(14, 10, 14, 10)
+        lay.setSpacing(8)
         if title:
             t = SubtitleLabel(title)
             lay.addWidget(t)
@@ -112,7 +111,7 @@ class DetectTab(ScrollArea):
         card, lay = self._card("检测目标")
 
         btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
+        btn_row.setSpacing(6)
         add_btn = PrimaryPushButton(FluentIcon.ADD, "添加目标")
         add_btn.clicked.connect(self.add_target_requested.emit)
         btn_row.addWidget(add_btn)
@@ -145,48 +144,62 @@ class DetectTab(ScrollArea):
     def _build_settings_card(self) -> CardWidget:
         card, lay = self._card("检测设置")
 
-        conf_label = BodyLabel("置信度")
-        lay.addWidget(conf_label)
+        # 置信度：标签 + 滑块 + 数值 同一行
         conf_row = QHBoxLayout()
-        conf_row.setSpacing(12)
+        conf_row.setSpacing(8)
+        conf_row.addWidget(BodyLabel("置信度"))
         self.conf_slider = Slider(Qt.Horizontal)
         self.conf_slider.setRange(10, 99)
         self.conf_slider.setValue(50)
         self.conf_value_label = BodyLabel("0.50")
-        self.conf_value_label.setMinimumWidth(48)
+        self.conf_value_label.setMinimumWidth(40)
         self.conf_slider.valueChanged.connect(
             lambda v: self.conf_value_label.setText(f"{v / 100:.2f}"))
         conf_row.addWidget(self.conf_slider, 1)
         conf_row.addWidget(self.conf_value_label)
         lay.addLayout(conf_row)
 
-        fps_label = BodyLabel("目标帧率")
-        lay.addWidget(fps_label)
+        # 目标帧率：标签 + 数值框 同一行
+        fps_row = QHBoxLayout()
+        fps_row.setSpacing(8)
+        fps_row.addWidget(BodyLabel("目标帧率"))
         self.fps_spin = SpinBox()
         self.fps_spin.setRange(1, 60)
         self.fps_spin.setValue(10)
-        lay.addWidget(self.fps_spin)
+        self.fps_spin.setMaximumWidth(110)
+        fps_row.addWidget(self.fps_spin)
+        fps_row.addStretch()
+        lay.addLayout(fps_row)
 
+        # 复选框两个一行
+        cb_row = QHBoxLayout()
+        cb_row.setSpacing(16)
         self.priority_cb = CheckBox("启用优先级（数字越小优先级越高）")
-        lay.addWidget(self.priority_cb)
-
+        cb_row.addWidget(self.priority_cb)
         self.auto_click_cb = CheckBox("自动点击")
-        lay.addWidget(self.auto_click_cb)
+        cb_row.addWidget(self.auto_click_cb)
+        cb_row.addStretch()
+        lay.addLayout(cb_row)
 
         self.floating_auto_switch_cb = CheckBox("开始检测时自动切换到悬浮窗")
         lay.addWidget(self.floating_auto_switch_cb)
 
-        lay.addWidget(BodyLabel("多目标同优先级点击策略"))
+        # 多目标点击策略：标签 + 下拉 同一行
+        multi_row = QHBoxLayout()
+        multi_row.setSpacing(8)
+        multi_row.addWidget(BodyLabel("多目标同优先级点击策略"))
         self.multi_click_combo = QComboBox()
         self.multi_click_combo.addItems(["只点击一个", "点击所有实例"])
-        self.multi_click_combo.setMinimumWidth(200)
-        lay.addWidget(self.multi_click_combo)
+        self.multi_click_combo.setMaximumWidth(170)
+        multi_row.addWidget(self.multi_click_combo)
+        multi_row.addStretch()
+        lay.addLayout(multi_row)
         return card
 
     def _build_control_card(self) -> CardWidget:
         card, lay = self._card("控制")
         btn_row = QHBoxLayout()
-        btn_row.setSpacing(12)
+        btn_row.setSpacing(8)
 
         self.start_btn = QPushButton("开始检测")
         self.start_btn.setObjectName("success_btn")
