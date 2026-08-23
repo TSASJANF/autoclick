@@ -5,8 +5,8 @@
    print，GUI 进程无控制台时所有可诊断信息实际全部丢失；
 2. 单实例锁（SEC-02）：双开进程会相互覆盖 targets.json/sets_index.json
    （后写者抹掉先写者的全部变更），现以 QLocalServer 拒绝第二实例；
-3. 主题：qt-material（Material Design）+ 语义按钮补充样式
-   （ui/theme.py），取代从未被加载过的孤儿 style.qss；
+3. 主题：PySide6-Fluent-Widgets（Windows 11 Fluent Design）+ 语义按钮
+   补充样式（ui/theme.py），取代此前的自定义 style.qss 与 qt-material；
 4. 启动时清理过期截图（SEC-03）。
 """
 

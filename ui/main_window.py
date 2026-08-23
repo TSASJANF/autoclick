@@ -1,10 +1,11 @@
-"""主窗口：页签组装、全局热键、悬浮窗与状态持久化。
+"""主窗口：FluentWindow + 左侧导航 + 五个子界面。
 
-相对历史版本的改动：
-- NativeHotkeyManager（Qt+线程混合体）移出：轮询逻辑在 core.hotkey
-  （零 Qt），本文件仅保留一个信号桥接对象；
-- 各管理器/配置由 AppContext 组装，页签构造签名统一；
-- 添加/编辑目标对话框抽到 ui.dialogs 共享。
+相对旧版 QTabWidget 主窗口的改动：
+- 导航改为 Fluent 侧边栏（检测/标注/训练/OpenCV 模板/设置）；
+- 状态栏改为 InfoBar 轻提示（Fluent 风格 toast）；
+- 五个页面各自为 ScrollArea 卡片式布局（内容多时滚动而非压缩）。
+
+业务装配（AppContext）、悬浮窗、全局热键、状态持久化逻辑保持不变。
 """
 
 from __future__ import annotations
@@ -12,9 +13,9 @@ from __future__ import annotations
 import logging
 import os
 
-from PySide6.QtCore import QObject, Qt, Signal, Slot
-from PySide6.QtWidgets import (
-    QFileDialog, QInputDialog, QMainWindow, QMessageBox, QStatusBar, QTabWidget,
+from PySide6.QtCore import Qt, QObject, Signal, Slot
+from qfluentwidgets import (
+    FluentIcon, FluentWindow, InfoBar, InfoBarPosition, NavigationItemPosition,
 )
 
 from core.hotkey import HotkeyWatcher
@@ -49,64 +50,74 @@ class HotkeyBridge(QObject):
         self.hotkey_pressed.emit()
 
 
-class MainWindow(QMainWindow):
+class _StatusNotifier:
+    """把状态信息显示为 InfoBar 轻提示（Fluent 风格）。"""
+
+    def __init__(self, window):
+        self._window = window
+
+    def showMessage(self, text: str, timeout: int = 3000) -> None:
+        InfoBar.info(
+            title="提示", content=text, parent=self._window,
+            position=InfoBarPosition.BOTTOM_RIGHT, duration=timeout,
+        )
+
+
+class MainWindow(FluentWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("自动点击 - 屏幕识别工具")
-        self.setMinimumSize(1200, 800)
+        self.resize(1400, 900)
+        self.setMinimumSize(1100, 720)
 
         # 组合根
         self.ctx = AppContext()
         self._restore_window_state()
 
-        # 页签
-        self.tabs = QTabWidget()
-        self.tabs.setDocumentMode(True)
-
+        # 五个子界面（各自为 ScrollArea 卡片式布局）
         self.detect_tab = DetectTab(self.ctx)
         self.annotate_tab = AnnotateTab(self.ctx)
         self.train_tab = TrainTab(self.ctx)
         self.opencv_tab = OpenCVTab(self.ctx)
         self.settings_tab = SettingsTab(self.ctx)
 
-        self.tabs.addTab(self.detect_tab, "检测")
-        self.tabs.addTab(self.annotate_tab, "标注")
-        self.tabs.addTab(self.train_tab, "训练")
-        self.tabs.addTab(self.opencv_tab, "OpenCV 模板")
-        self.tabs.addTab(self.settings_tab, "设置")
-        self.setCentralWidget(self.tabs)
+        self.interface_order = [
+            self.detect_tab, self.annotate_tab, self.train_tab,
+            self.opencv_tab, self.settings_tab,
+        ]
+        self.addSubInterface(self.detect_tab, FluentIcon.PLAY, "检测")
+        self.addSubInterface(self.annotate_tab, FluentIcon.EDIT, "标注")
+        self.addSubInterface(self.train_tab, FluentIcon.ROBOT, "训练")
+        self.addSubInterface(self.opencv_tab, FluentIcon.PHOTO, "OpenCV 模板")
+        self.addSubInterface(
+            self.settings_tab, FluentIcon.SETTING, "设置",
+            position=NavigationItemPosition.BOTTOM,
+        )
 
         # 悬浮窗（创建但不显示）
         self.floating_window = FloatingWindow()
         self._setup_floating_window()
 
-        # 状态栏
-        self.status = QStatusBar()
-        self.setStatusBar(self.status)
+        # 状态提示
+        self.status = _StatusNotifier(self)
         self.status.showMessage("就绪")
 
         # 信号连接
         self.train_tab.training_complete.connect(self._on_training_complete)
         self.settings_tab.config_changed.connect(self._on_config_changed)
-        # 目标变更统一走 hub 广播（ARCH-02：新增页签修改目标后无需在此补连）
         self.ctx.hub.targets_changed.connect(self._refresh_all)
         self.annotate_tab.sample_set_renamed.connect(self._on_sample_set_renamed)
-        self.detect_tab.status_message.connect(self.status.showMessage)
+        self.detect_tab.status_message.connect(self._on_status_message)
+        self.detect_tab.add_target_requested.connect(self._add_target)
+        self.detect_tab.import_model_requested.connect(self._import_model)
 
-        # 启动自检（BIZ-05）：失效路径/损坏备份汇总提示
+        # 启动自检（BIZ-05）
         self._run_startup_health_check()
 
         # 全局热键
         self._hotkey_bridge = HotkeyBridge(self)
         self._hotkey_bridge.hotkey_pressed.connect(self._on_hotkey_toggle_detection)
         self._update_global_hotkey()
-
-        # 菜单栏
-        menubar = self.menuBar()
-        file_menu = menubar.addMenu("文件")
-        file_menu.addAction("导入模型到目标...", self._import_model)
-        file_menu.addSeparator()
-        file_menu.addAction("退出", self.close)
 
         self._refresh_all()
         self._restore_tab_states()
@@ -118,7 +129,8 @@ class MainWindow(QMainWindow):
         if dlg.exec() == AddTargetDialog.Accepted:
             data = dlg.get_data()
             if not data["name"]:
-                QMessageBox.warning(self, "提示", "请输入目标名称")
+                InfoBar.warning(title="提示", content="请输入目标名称",
+                                parent=self, position=InfoBarPosition.TOP)
                 return
             target = self.ctx.tm.add(**data)
             os.makedirs(os.path.join(target.data_dir, "labels"), exist_ok=True)
@@ -126,40 +138,12 @@ class MainWindow(QMainWindow):
             self._refresh_all()
             self.status.showMessage(f"已添加目标: {target.name}")
 
-    def _edit_target(self):
-        tm = self.ctx.tm
-        if not tm.targets:
-            QMessageBox.information(self, "提示", "暂无目标")
-            return
-        names = [t.name for t in tm.targets]
-        name, ok = QInputDialog.getItem(self, "编辑目标", "选择目标:", names, 0, False)
-        if not ok:
-            return
-        target = next((t for t in tm.targets if t.name == name), None)
-        if not target:
-            return
-        dlg = AddTargetDialog(sample_sets=self.ctx.ssm.get_all(), parent=self)
-        dlg.set_target(target)
-        if dlg.exec() == AddTargetDialog.Accepted:
-            data = dlg.get_data()
-            target.name = data["name"]
-            target.detection_mode = data["detection_mode"]
-            target.priority = data["priority"]
-            target.color = data["color"]
-            if data.get("set_id"):
-                target.set_id = data["set_id"]
-                target.data_dir = os.path.join(
-                    "data", "sets", data["set_id"], "targets", target.id)
-            self.ctx.tm.save()
-            self._refresh_all()
-
     def _import_model(self):
         tm = self.ctx.tm
         if not tm.targets:
-            QMessageBox.information(self, "提示", "请先添加目标")
+            InfoBar.warning(title="提示", content="请先添加目标", parent=self)
             return
-        # SEC-01：.pt 是 pickle 序列化格式，加载即执行其中代码。
-        # 从他人处获取的模型等同于运行未知程序，必须明示风险。
+        from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
         reply = QMessageBox.warning(
             self, "安全提示",
             "模型文件 (.pt) 加载时会执行其中嵌入的代码。\n"
@@ -178,7 +162,7 @@ class MainWindow(QMainWindow):
         target = next((t for t in tm.targets if t.name == name), None)
         if target:
             target.model_path = path
-            self.ctx.drop_model(target.id)   # 让后台加载器重新装载
+            self.ctx.drop_model(target.id)
             tm.save()
             self._refresh_all()
             self.status.showMessage(f"已将模型导入到目标 '{target.name}': {path}")
@@ -202,11 +186,15 @@ class MainWindow(QMainWindow):
     @Slot(str, str)
     def _on_training_complete(self, model_path: str, target_id: str):
         self.detect_tab.refresh_targets()
-        self.status.showMessage(f"训练完成: {model_path}")
+        self.status.showMessage(f"训练完成: {model_path}", 5000)
 
     @Slot(dict)
     def _on_config_changed(self, cfg: dict):
         self._update_global_hotkey()
+
+    @Slot(str)
+    def _on_status_message(self, msg: str):
+        self.status.showMessage(msg)
 
     # ========== 悬浮窗 ==========
 
@@ -232,7 +220,7 @@ class MainWindow(QMainWindow):
                 screen = self.screen()
                 if screen:
                     geo = screen.availableGeometry()
-                    self.floating_window.move(geo.width() - 280, geo.height() - 240)
+                    self.floating_window.move(geo.width() - 300, geo.height() - 260)
             if detecting and self.detect_tab.detect_thread:
                 try:
                     self.detect_tab.detect_thread.fps_update.disconnect(
@@ -293,15 +281,15 @@ class MainWindow(QMainWindow):
         x, y = ws.get("x"), ws.get("y")
         if x is not None and y is not None:
             self.move(x, y)
-        self.resize(ws.get("width", 1200), ws.get("height", 800))
+        self.resize(ws.get("width", 1400), ws.get("height", 900))
         if ws.get("maximized", False):
             self.showMaximized()
 
     def _restore_tab_states(self):
         state = self.ctx.state
         active_tab = state.get("window", {}).get("active_tab", 0)
-        if 0 <= active_tab < self.tabs.count():
-            self.tabs.setCurrentIndex(active_tab)
+        if 0 <= active_tab < len(self.interface_order):
+            self.switchTo(self.interface_order[active_tab])
 
         detect_state = state.get("detect", {})
         self.detect_tab.conf_slider.setValue(detect_state.get("confidence", 50))
@@ -341,7 +329,7 @@ class MainWindow(QMainWindow):
             "width": self.width(),
             "height": self.height(),
             "maximized": self.isMaximized(),
-            "active_tab": self.tabs.currentIndex(),
+            "active_tab": self.stackedWidget.currentIndex(),
         }
         state["detect"] = {
             "confidence": self.detect_tab.conf_slider.value(),
@@ -369,9 +357,6 @@ class MainWindow(QMainWindow):
         self.ctx.save_app_state()
 
     def closeEvent(self, event):
-        # 退出收尾（BUG-01）：检测与训练线程都必须显式停止，
-        # 否则退出瞬间检测线程仍在 SendInput 点击屏幕（幽灵点击），
-        # 或 QThread 在析构阶段被强杀导致崩溃
         try:
             self.detect_tab.stop_if_running(timeout_ms=8000)
         except Exception:

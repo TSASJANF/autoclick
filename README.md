@@ -10,8 +10,10 @@ pip install -e .          # 或 pip install -r requirements.txt
 python main.py
 ```
 
-界面基于 **qt-material**（Material Design，MIT 协议）主题，语义按钮
-（主操作/成功/危险）由 `ui/theme.py` 叠加补充样式实现。
+界面基于 **PySide6-Fluent-Widgets**（Windows 11 Fluent Design，开源组件库）
+整体重构：左侧导航 + 卡片式页面 + 每页 `ScrollArea` 可滚动（内容多时出现
+滚动条而非压缩空间）。语义按钮（主操作/成功/危险）由 `ui/theme.py`
+叠加补充样式实现。
 
 ## 典型工作流
 

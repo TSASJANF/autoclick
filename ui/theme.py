@@ -1,14 +1,11 @@
-"""应用主题：qt-material（Material Design, MIT）+ 少量补充样式。
+"""应用主题：PySide6-Fluent-Widgets（Windows 11 Fluent Design）。
 
-历史背景：项目里那份 633 行的 style.qss 从未被加载过（孤儿文件）；
-重构时接入后暴露出它与实际控件不匹配——全局字体/内边距改变挤压了
-所有按旧尺寸写死的布局，文字截断、视觉破碎。
+历史：此前依次试过自定义 style.qss（半成品，加载即压坏布局）与
+qt-material（纯样式表，无法解决布局结构问题）。现改用 Fluent 组件库：
+自带卡片 / 滚动区 / 导航 / 输入控件，视觉统一且支持内容滚动。
 
-现改为成熟组件主题库 qt-material，并只保留一层很薄的补充样式：
-- 语义按钮（primary/success/danger objectName，业务代码已广泛使用）；
-- 次要文字色、标题、分隔线等设计令牌。
-
-注意：qt_material 必须在 PySide 之后导入。
+语义色（primary/success/danger）通过一层薄补充样式覆盖在 Fluent 主题
+之上，供 dialogs 与历史 objectName 沿用。
 """
 
 from __future__ import annotations
@@ -17,73 +14,44 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# 设计令牌（与库内各页签内联样式保持同族）
-ACCENT = "#6366f1"          # 主色（靛蓝）
-ACCENT_HOVER = "#818cf8"
+ACCENT = "#5b8ff9"          # Fluent 蓝（主色）
 SUCCESS = "#22c55e"
-SUCCESS_HOVER = "#4ade80"
 DANGER = "#ef4444"
-DANGER_HOVER = "#f87171"
-TEXT_MUTED = "#8888a8"
-BORDER = "#2a2a4a"
-SURFACE_DARK = "#0a0a16"    # 画布深色底
 
-# 叠加在 qt-material 之上的补充样式（语义按钮 + 设计令牌）。
-# 必须拼接在主题样式表之后整体设置——QApplication.setStyleSheet 是
-# 整体替换而非叠加。
+# 叠加的语义按钮样式（qfluentwidgets 全局样式之外的补充）
 SUPPLEMENT_QSS = f"""
 QPushButton#primary_btn {{
-    background-color: {ACCENT};
-    color: white;
-    font-weight: 600;
+    background-color: {ACCENT}; color: white; font-weight: 600;
+    border: none; border-radius: 6px; padding: 7px 16px;
 }}
-QPushButton#primary_btn:hover {{ background-color: {ACCENT_HOVER}; }}
-QPushButton#primary_btn:disabled {{ background-color: #4b4b6b; color: #9999b5; }}
+QPushButton#primary_btn:hover {{ background-color: #6ea0ff; }}
+QPushButton#primary_btn:pressed {{ background-color: #4a7fdb; }}
+QPushButton#primary_btn:disabled {{ background-color: #3a3a4a; color: #7a7a8a; }}
 
 QPushButton#success_btn {{
-    background-color: {SUCCESS};
-    color: white;
-    font-weight: 600;
+    background-color: {SUCCESS}; color: white; font-weight: 600;
+    border: none; border-radius: 6px; padding: 7px 16px;
 }}
-QPushButton#success_btn:hover {{ background-color: {SUCCESS_HOVER}; }}
+QPushButton#success_btn:hover {{ background-color: #4ade80; }}
+QPushButton#success_btn:pressed {{ background-color: #16a34a; }}
 QPushButton#success_btn:disabled {{ background-color: #2f6b48; color: #9fbfae; }}
 
 QPushButton#danger_btn {{
-    background-color: {DANGER};
-    color: white;
-    font-weight: 600;
+    background-color: {DANGER}; color: white; font-weight: 600;
+    border: none; border-radius: 6px; padding: 7px 16px;
 }}
-QPushButton#danger_btn:hover {{ background-color: {DANGER_HOVER}; }}
+QPushButton#danger_btn:hover {{ background-color: #f87171; }}
+QPushButton#danger_btn:pressed {{ background-color: #dc2626; }}
 QPushButton#danger_btn:disabled {{ background-color: #6b2f2f; color: #bfa0a0; }}
 
-QLabel#heading {{
-    font-size: 16px;
-    font-weight: 600;
-    color: #e8e8f0;
-}}
-
-QLabel#muted {{ color: {TEXT_MUTED}; }}
-QFrame#hline {{
-    color: {BORDER};
-    max-height: 1px;
-    border: none;
-    border-top: 1px solid {BORDER};
-}}
+QLabel#heading {{ font-size: 18px; font-weight: 600; color: #e8e8f0; }}
 """
 
 
 def apply_theme(app) -> None:
-    """应用 Material 主题并叠加语义组件样式。"""
-    from qt_material import apply_stylesheet
-
-    extra = {
-        # 中文优先字体，回退 Segoe UI
-        "font_family": "Microsoft YaHei UI",
-        # 紧凑密度：表格/表单类工具界面默认密度偏大，-1 档更合适
-        "density_scale": "-1",
-        "primaryColor": ACCENT,
-        "primaryLightColor": ACCENT_HOVER,
-    }
-    apply_stylesheet(app, theme="dark_cyan.xml", extra=extra)
+    """应用 Fluent 暗色主题 + 主色 + 语义按钮补充样式。"""
+    from qfluentwidgets import setTheme, setThemeColor, Theme
+    setTheme(Theme.DARK)
+    setThemeColor(ACCENT)
     app.setStyleSheet(app.styleSheet() + SUPPLEMENT_QSS)
-    logger.info("主题已应用: qt-material dark_cyan (accent=%s)", ACCENT)
+    logger.info("主题已应用: PySide6-Fluent-Widgets (accent=%s)", ACCENT)

@@ -29,7 +29,7 @@ def main() -> int:
 
     names = ["detect", "annotate", "train", "opencv", "settings"]
     for i, name in enumerate(names):
-        w.tabs.setCurrentIndex(i)
+        w.switchTo(w.interface_order[i])
         for _ in range(20):
             app.processEvents()
         pix = w.grab()

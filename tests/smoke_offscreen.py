@@ -24,7 +24,7 @@ def main() -> int:
 
     def check():
         try:
-            assert w.tabs.count() == 5, f"页签数: {w.tabs.count()}"
+            assert w.stackedWidget.count() == 5, f"界面数: {w.stackedWidget.count()}"
             assert len(w.ctx.tm.targets) >= 1, "目标未加载"
             assert w.ctx.ssm.get_all(), "样本集未加载"
             assert w.detect_tab.target_table.rowCount() == len(w.ctx.tm.targets)

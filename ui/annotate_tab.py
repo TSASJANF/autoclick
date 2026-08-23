@@ -1,13 +1,7 @@
 """标注页：样本集管理、目标标注、图片导航与会话记忆。
 
-相对历史版本的改动：
-- 标注框归属键从「颜色」改为 target_id（修复两个目标颜色相同时标注
-  互相污染的数据缺陷）；
-- 标注读写移入 core.annotations；
-- 图片标注状态批量计算（旧版每张图×每个目标逐个 stat，100 图 5 目标
-  = 每次切换目标上千次文件系统调用）；
-- 截图统一走 capture_by_config；
-- 画布/颜色委托使用共享组件 ui.widgets.canvas。
+布局：ScrollArea 内的卡片式布局（样本集/图片/标注目标/图片列表/标注框/
+数据集六张卡片），窗口过小时纵向滚动。标注归属、缓存等业务逻辑不变。
 """
 
 from __future__ import annotations
@@ -20,10 +14,13 @@ import shutil
 from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QDialog, QFileDialog, QGroupBox,
+    QAbstractItemView, QComboBox, QFileDialog, QHBoxLayout, QHeaderView,
     QInputDialog, QLabel, QListWidget, QListWidgetItem, QMenu, QMessageBox,
-    QPushButton, QSplitter, QStyledItemDelegate, QTableWidget,
-    QTableWidgetItem, QVBoxLayout, QWidget, QHBoxLayout, QSizePolicy,
+    QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+)
+from qfluentwidgets import (
+    BodyLabel, CardWidget, FluentIcon, PrimaryPushButton, PushButton,
+    ScrollArea, SubtitleLabel, TableWidget,
 )
 
 from core import annotations as anno
@@ -51,208 +48,193 @@ def _status_item(image_path: str, status: str) -> QListWidgetItem:
     return item
 
 
-class AnnotateTab(QWidget):
+class AnnotateTab(ScrollArea):
     sample_set_renamed = Signal(str)
 
     def __init__(self, ctx: AppContext, parent=None):
         super().__init__(parent)
+        self.setObjectName("annotateInterface")
         self.ctx = ctx
         self.tm: TargetManager = ctx.tm
         self.ssm: SampleSetManager = ctx.ssm
         self.current_image_path: str | None = None
-        self.current_image = None          # BGR ndarray
+        self.current_image = None
         self._image_list: list[str] = []
         self._current_index = -1
         self._current_target: Target | None = None
         self._current_set: SampleSet | None = None
-        # 标注状态缓存（PERF-04）：target_id -> 非空标注主干集合，
-        # 仅在标注发生增删/目标集合变化时失效，导航切换零文件系统开销
         self._stems_cache: dict[str, set[str]] | None = None
         self._init_ui()
         self._populate_set_combo()
         if self.set_combo.count() > 0:
             self.set_combo.setCurrentIndex(0)
             if self._current_set is None:
-                # setCurrentIndex(0) 在已是 0 时不发信号，需手动初始化
                 self._on_sample_set_changed(0)
 
     # ========== UI ==========
 
     def _init_ui(self):
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(12, 12, 12, 12)
-        main_layout.setSpacing(12)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        # 左：画布
-        canvas_group = QGroupBox("图片")
-        canvas_layout = QVBoxLayout(canvas_group)
-        canvas_layout.setSpacing(8)
+        content = QWidget()
+        self.setWidget(content)
+        root = QVBoxLayout(content)
+        root.setContentsMargins(20, 16, 20, 24)
+        root.setSpacing(12)
 
+        title = QLabel("标注")
+        title.setObjectName("heading")
+        root.addWidget(title)
+        root.addWidget(QLabel("采集屏幕样本 → 为目标拖框标注 → 保存；快捷键 A 上一张 / D 下一张 / S 保存并下一张"))
+
+        root.addWidget(self._build_set_card())
+        root.addWidget(self._build_canvas_card())
+        root.addWidget(self._build_target_card())
+        root.addWidget(self._build_image_list_card())
+        root.addWidget(self._build_box_card())
+        root.addWidget(self._build_info_card())
+        root.addStretch()
+
+        self.screenshot_shortcut = QShortcut(QKeySequence("F12"), self)
+        self.screenshot_shortcut.activated.connect(self._take_screenshot)
+
+    def _card(self, title: str) -> tuple[CardWidget, QVBoxLayout]:
+        card = CardWidget()
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setSpacing(12)
+        if title:
+            lay.addWidget(SubtitleLabel(title))
+        return card, lay
+
+    def _build_set_card(self) -> CardWidget:
+        card, lay = self._card("样本集")
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.set_combo = QComboBox()
+        self.set_combo.currentIndexChanged.connect(self._on_sample_set_changed)
+        row.addWidget(self.set_combo, 1)
+        self.add_set_btn = PushButton(FluentIcon.ADD, "新建")
+        self.add_set_btn.clicked.connect(self._create_sample_set)
+        row.addWidget(self.add_set_btn)
+        self.rename_set_btn = PushButton("重命名")
+        self.rename_set_btn.clicked.connect(self._rename_sample_set)
+        row.addWidget(self.rename_set_btn)
+        self.delete_set_btn = PushButton(FluentIcon.DELETE, "删除")
+        self.delete_set_btn.clicked.connect(self._delete_sample_set)
+        row.addWidget(self.delete_set_btn)
+        lay.addLayout(row)
+        return card
+
+    def _build_canvas_card(self) -> CardWidget:
+        card, lay = self._card("图片")
         self.canvas = ImageCanvas()
         self.canvas.region_drawn.connect(self._on_box_drawn)
-        canvas_layout.addWidget(self.canvas)
+        lay.addWidget(self.canvas)
 
-        nav_layout = QHBoxLayout()
-        nav_layout.setSpacing(8)
-
-        self.prev_btn = QPushButton("上一张 (A)")
+        nav = QHBoxLayout()
+        nav.setSpacing(8)
+        self.prev_btn = PushButton(FluentIcon.LEFT_ARROW, "上一张 (A)")
         self.prev_btn.clicked.connect(self._prev_image)
         self.prev_btn.setEnabled(False)
-        nav_layout.addWidget(self.prev_btn)
-
+        nav.addWidget(self.prev_btn)
         self.save_btn = QPushButton("保存并下一张 (S)")
         self.save_btn.setObjectName("success_btn")
         self.save_btn.clicked.connect(self._save_and_next)
         self.save_btn.setEnabled(False)
-        nav_layout.addWidget(self.save_btn)
-
-        self.next_btn = QPushButton("下一张 (D)")
+        nav.addWidget(self.save_btn)
+        self.next_btn = PushButton(FluentIcon.RIGHT_ARROW, "下一张 (D)")
         self.next_btn.clicked.connect(self._next_image)
         self.next_btn.setEnabled(False)
-        nav_layout.addWidget(self.next_btn)
-        canvas_layout.addLayout(nav_layout)
+        nav.addWidget(self.next_btn)
+        lay.addLayout(nav)
 
-        action_layout = QHBoxLayout()
-        action_layout.setSpacing(8)
-
-        self.open_btn = QPushButton("打开图片")
+        action = QHBoxLayout()
+        action.setSpacing(8)
+        self.open_btn = PushButton(FluentIcon.FOLDER, "打开图片")
         self.open_btn.clicked.connect(self._open_image)
-        action_layout.addWidget(self.open_btn)
-
-        self.open_folder_btn = QPushButton("打开文件夹")
+        action.addWidget(self.open_btn)
+        self.open_folder_btn = PushButton(FluentIcon.FOLDER, "打开文件夹")
         self.open_folder_btn.clicked.connect(self._open_folder)
-        action_layout.addWidget(self.open_folder_btn)
-
-        self.screenshot_btn = QPushButton("截图")
+        action.addWidget(self.open_folder_btn)
+        self.screenshot_btn = PushButton(FluentIcon.CAMERA, "截图")
         self.screenshot_btn.clicked.connect(self._take_screenshot)
-        action_layout.addWidget(self.screenshot_btn)
-
-        self.reannotate_btn = QPushButton("重新标注")
+        action.addWidget(self.screenshot_btn)
+        self.reannotate_btn = PushButton("重新标注")
         self.reannotate_btn.setToolTip("清除当前图片在当前目标下的标注，重新开始")
         self.reannotate_btn.clicked.connect(self._reannotate)
         self.reannotate_btn.setEnabled(False)
-        action_layout.addWidget(self.reannotate_btn)
-        canvas_layout.addLayout(action_layout)
+        action.addWidget(self.reannotate_btn)
+        action.addStretch()
+        lay.addLayout(action)
 
-        self.progress_label = QLabel("未加载图片")
-        self.progress_label.setAlignment(Qt.AlignCenter)
-        self.progress_label.setStyleSheet("color: #8888a8; font-size: 12px;")
-        canvas_layout.addWidget(self.progress_label)
+        self.progress_label = BodyLabel("未加载图片")
+        lay.addWidget(self.progress_label)
+        return card
 
-        # 右栏
-        right_splitter = QSplitter(Qt.Vertical)
-
-        # 样本集
-        set_group = QGroupBox("样本集")
-        set_layout = QHBoxLayout(set_group)
-        set_layout.setSpacing(8)
-
-        self.set_combo = QComboBox()
-        self.set_combo.currentIndexChanged.connect(self._on_sample_set_changed)
-        set_layout.addWidget(self.set_combo, 1)
-
-        self.add_set_btn = QPushButton("新建")
-        self.add_set_btn.clicked.connect(self._create_sample_set)
-        set_layout.addWidget(self.add_set_btn)
-
-        self.rename_set_btn = QPushButton("重命名")
-        self.rename_set_btn.clicked.connect(self._rename_sample_set)
-        set_layout.addWidget(self.rename_set_btn)
-
-        self.delete_set_btn = QPushButton("删除")
-        self.delete_set_btn.setObjectName("danger_btn")
-        self.delete_set_btn.clicked.connect(self._delete_sample_set)
-        set_layout.addWidget(self.delete_set_btn)
-        right_splitter.addWidget(set_group)
-
-        # 目标表
-        target_group = QGroupBox("当前标注目标")
-        target_layout = QVBoxLayout(target_group)
-        target_layout.setSpacing(8)
-
-        self.target_table = QTableWidget(0, 2)
+    def _build_target_card(self) -> CardWidget:
+        card, lay = self._card("当前标注目标")
+        self.target_table = TableWidget()
         self.target_table.setHorizontalHeaderLabels(["颜色", "名称"])
         self.target_table.setItemDelegateForColumn(0, ColorDelegate(self.target_table))
-        self.target_table.setColumnWidth(0, 40)
-        self.target_table.horizontalHeader().setStretchLastSection(True)
+        header = self.target_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setStretchLastSection(True)
+        self.target_table.setMaximumHeight(220)
         self.target_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.target_table.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.target_table.setMaximumHeight(220)
         self.target_table.currentCellChanged.connect(self._on_target_row_changed)
         self.target_table.cellDoubleClicked.connect(self._on_target_cell_double_clicked)
         self.target_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.target_table.customContextMenuRequested.connect(self._on_target_context_menu)
-        target_layout.addWidget(self.target_table)
+        lay.addWidget(self.target_table)
 
-        target_btn_layout = QHBoxLayout()
-        target_btn_layout.setSpacing(8)
-        self.target_info_label = QLabel("选择一个目标进行标注")
-        self.target_info_label.setStyleSheet("color: #8888a8; font-size: 12px;")
-        target_btn_layout.addWidget(self.target_info_label)
-
-        add_target_btn = QPushButton("增加")
-        add_target_btn.setObjectName("primary_btn")
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.target_info_label = BodyLabel("选择一个目标进行标注")
+        row.addWidget(self.target_info_label, 1)
+        add_target_btn = PrimaryPushButton(FluentIcon.ADD, "增加")
         add_target_btn.clicked.connect(self._create_new_target)
-        target_btn_layout.addWidget(add_target_btn)
-        target_layout.addLayout(target_btn_layout)
-        right_splitter.addWidget(target_group)
+        row.addWidget(add_target_btn)
+        lay.addLayout(row)
+        return card
 
-        # 图片列表
-        img_list_group = QGroupBox("图片列表")
-        img_list_layout = QVBoxLayout(img_list_group)
-        img_list_layout.setSpacing(8)
-
+    def _build_image_list_card(self) -> CardWidget:
+        card, lay = self._card("图片列表")
         self.image_list_widget = QListWidget()
         self.image_list_widget.currentRowChanged.connect(self._on_image_selected)
         self.image_list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         self.image_list_widget.customContextMenuRequested.connect(self._on_image_list_context_menu)
-        img_list_layout.addWidget(self.image_list_widget)
+        self.image_list_widget.setMinimumHeight(140)
+        lay.addWidget(self.image_list_widget)
+        self.annotated_count_label = BodyLabel("已标注: 0 / 0")
+        lay.addWidget(self.annotated_count_label)
+        return card
 
-        self.annotated_count_label = QLabel("已标注: 0 / 0")
-        self.annotated_count_label.setStyleSheet("color: #8888a8; font-size: 12px;")
-        img_list_layout.addWidget(self.annotated_count_label)
-        right_splitter.addWidget(img_list_group)
-
-        # 标注框列表
-        box_group = QGroupBox("标注框")
-        box_layout = QVBoxLayout(box_group)
-        box_layout.setSpacing(8)
-
+    def _build_box_card(self) -> CardWidget:
+        card, lay = self._card("标注框")
         self.box_list = QListWidget()
-        box_layout.addWidget(self.box_list)
-
-        box_btn_layout = QHBoxLayout()
-        box_btn_layout.setSpacing(8)
+        self.box_list.setMaximumHeight(140)
+        lay.addWidget(self.box_list)
+        row = QHBoxLayout()
+        row.setSpacing(8)
         self.delete_box_btn = QPushButton("删除选中框")
         self.delete_box_btn.setObjectName("danger_btn")
         self.delete_box_btn.clicked.connect(self._delete_selected_box)
-        box_btn_layout.addWidget(self.delete_box_btn)
-
-        self.clear_btn = QPushButton("清除所有框")
+        row.addWidget(self.delete_box_btn)
+        self.clear_btn = PushButton("清除所有框")
         self.clear_btn.clicked.connect(self._clear_all_boxes)
-        box_btn_layout.addWidget(self.clear_btn)
-        box_layout.addLayout(box_btn_layout)
-        right_splitter.addWidget(box_group)
+        row.addWidget(self.clear_btn)
+        row.addStretch()
+        lay.addLayout(row)
+        return card
 
-        # 数据集信息
-        info_group = QGroupBox("数据集")
-        info_layout = QVBoxLayout(info_group)
-        info_layout.setSpacing(8)
-        self.info_label = QLabel()
-        self.info_label.setStyleSheet("color: #e8e8f0;")
-        info_layout.addWidget(self.info_label)
-        right_splitter.addWidget(info_group)
-
-        right_splitter.setSizes([50, 80, 250, 150, 60])
-
-        main_splitter = QSplitter(Qt.Horizontal)
-        main_splitter.addWidget(canvas_group)
-        main_splitter.addWidget(right_splitter)
-        main_splitter.setSizes([700, 300])
-        main_layout.addWidget(main_splitter)
-
-        self.screenshot_shortcut = QShortcut(QKeySequence("F12"), self)
-        self.screenshot_shortcut.activated.connect(self._take_screenshot)
+    def _build_info_card(self) -> CardWidget:
+        card, lay = self._card("数据集")
+        self.info_label = BodyLabel()
+        lay.addWidget(self.info_label)
+        return card
 
     # ========== 样本集管理 ==========
 
@@ -288,7 +270,7 @@ class AnnotateTab(QWidget):
         if self._current_set is not None and self._current_set.id != new_set.id:
             self._save_session()
         self._current_set = new_set
-        self._invalidate_stems_cache()   # 换样本集：目标目录集合不同
+        self._invalidate_stems_cache()
         self._load_session()
         self.refresh_targets()
         self._update_info()
@@ -329,8 +311,7 @@ class AnnotateTab(QWidget):
             f"  • 包含的 {len(targets)} 个目标及其标注\n"
             f"  • 样本集中的所有图片\n\n"
             f"此操作不可撤销！",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
-        )
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply != QMessageBox.Yes:
             return
         for t in targets:
@@ -354,7 +335,7 @@ class AnnotateTab(QWidget):
         return self.tm.get_by_set(self._current_set.id)
 
     def refresh_targets(self):
-        self._invalidate_stems_cache()   # 目标集合可能变化
+        self._invalidate_stems_cache()
         self.target_table.blockSignals(True)
         self.target_table.setRowCount(0)
         if self._current_set is not None:
@@ -362,8 +343,8 @@ class AnnotateTab(QWidget):
             for t in set_targets:
                 row = self.target_table.rowCount()
                 self.target_table.insertRow(row)
-                color_item = QTableWidgetItem()
                 from ui.widgets.image_utils import hex_to_rgb
+                color_item = QTableWidgetItem()
                 color_item.setBackground(QColor(*hex_to_rgb(t.color)))
                 color_item.setFlags(color_item.flags() & ~Qt.ItemIsEditable)
                 self.target_table.setItem(row, 0, color_item)
@@ -410,7 +391,6 @@ class AnnotateTab(QWidget):
                 item.setForeground(color)
 
     def _get_stems_map(self) -> dict[str, set[str]]:
-        """带缓存的标注主干集合（缓存失效点：保存/重标/删图/目标变化）。"""
         if self._stems_cache is None:
             self._stems_cache = anno.labeled_stems_map(
                 {t.id: t.data_dir for t in self._get_set_targets()})
@@ -455,13 +435,11 @@ class AnnotateTab(QWidget):
             f"  • 模型文件: {target.model_path or '无'}\n"
             f"  • 模板文件: {target.template_path or '无'}\n\n"
             f"此操作不可撤销！",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
-        )
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply != QMessageBox.Yes:
             return
         text, ok = QInputDialog.getText(
-            self, "最终确认",
-            f"请输入目标名称 '{target.name}' 以确认删除：")
+            self, "最终确认", f"请输入目标名称 '{target.name}' 以确认删除：")
         if not ok or text != target.name:
             QMessageBox.information(self, "取消", "名称不匹配，删除已取消")
             return
@@ -686,8 +664,7 @@ class AnnotateTab(QWidget):
             self, "确认删除",
             f"确定要彻底删除文件 '{os.path.basename(path)}' 吗？\n\n"
             f"此操作将删除图片和当前样本集中所有目标的标注，不可撤销！",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
-        )
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply != QMessageBox.Yes:
             return
         if os.path.exists(path):
@@ -781,8 +758,7 @@ class AnnotateTab(QWidget):
         reply = QMessageBox.question(
             self, "重新标注",
             f"确定要清除当前图片在目标 '{self._current_target.name}' 下的所有标注吗？",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
-        )
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply != QMessageBox.Yes:
             return
         t = self._current_target

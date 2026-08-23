@@ -101,12 +101,12 @@ def main() -> int:
     names = ["检测", "标注", "训练", "OpenCV模板", "设置"]
     total = 0
     for i, name in enumerate(names):
-        w.tabs.setCurrentIndex(i)
+        w.switchTo(w.interface_order[i])
         for _ in range(30):
             app.processEvents()
         issues = []
         counter = [0]
-        audit_root(w.tabs.currentWidget(), name, issues, counter)
+        audit_root(w.interface_order[i], name, issues, counter)
         print(f"   (审计覆盖 {counter[0]} 个控件)")
         print(f"== {name}: {len(issues)} 处截断")
         for msg in issues:

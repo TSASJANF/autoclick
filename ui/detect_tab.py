@@ -1,12 +1,8 @@
 """检测页：屏幕预览、目标选择、检测启停与结果展示。
 
-相对历史版本的改动：
-- 检测循环从本文件的两个 QThread 子类移入 core.detection_engine +
-  ui.workers.DetectionWorker（本文件只做视图与信号转发）；
-- AI 模型后台加载（旧版在 UI 线程同步加载，多目标时卡界面数秒）；
-- 模型加载失败有负缓存，不再每次 showEvent 重试（旧版会对不存在
-  的路径反复触发 ultralytics 联网下载）；
-- 截图逻辑统一走 capture_by_config。
+布局：ScrollArea 内的卡片式布局（预览/目标/设置/控制/结果五张卡片），
+窗口过小时纵向滚动，不再压缩空间。检测引擎、模型后台加载等逻辑与
+上一版完全一致，仅视图层换用 Fluent 组件。
 """
 
 from __future__ import annotations
@@ -18,12 +14,15 @@ import shutil
 import cv2
 import numpy as np
 from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QFrame, QGroupBox, QHBoxLayout,
-    QHeaderView, QInputDialog, QLabel, QMessageBox, QPushButton, QMenu,
-    QSlider, QSplitter, QSpinBox, QTableWidget, QTableWidgetItem,
-    QVBoxLayout, QWidget,
+    QAbstractItemView, QComboBox, QHeaderView, QHBoxLayout, QInputDialog,
+    QLabel, QMessageBox, QPushButton, QMenu, QTableWidgetItem, QVBoxLayout, QWidget,
+)
+from qfluentwidgets import (
+    BodyLabel, CaptionLabel, CardWidget, CheckBox, FluentIcon,
+    PrimaryPushButton, PushButton, ScrollArea, Slider, SpinBox, SubtitleLabel,
+    TableWidget,
 )
 
 from core.capture import ScreenCapture
@@ -40,188 +39,179 @@ logger = logging.getLogger(__name__)
 COL_CHECK, COL_NAME, COL_PRIORITY, COL_MODEL, COL_SET = 0, 1, 2, 3, 4
 
 
-class DetectTab(QWidget):
+class DetectTab(ScrollArea):
     status_message = Signal(str)
     floating_window_requested = Signal(bool, bool)  # show, detecting
+    add_target_requested = Signal()
+    import_model_requested = Signal()
 
     def __init__(self, ctx: AppContext, parent=None):
         super().__init__(parent)
+        self.setObjectName("detectInterface")
         self.ctx = ctx
         self.tm: TargetManager = ctx.tm
         self.detect_thread: DetectionWorker | None = None
         self._model_loader: ModelLoader | None = None
-        self._preview_enabled = True          # 悬浮窗模式下关闭预览绘制（PERF-05）
+        self._preview_enabled = True
         self._fps_warned = False
         self._init_ui()
 
     # ========== UI 构建 ==========
 
     def _init_ui(self):
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        # 左：预览
-        preview_group = QGroupBox("屏幕预览")
-        preview_layout = QVBoxLayout(preview_group)
-        preview_layout.setSpacing(8)
+        content = QWidget()
+        self.setWidget(content)
+        root = QVBoxLayout(content)
+        root.setContentsMargins(20, 16, 20, 24)
+        root.setSpacing(12)
 
+        # 标题
+        title = QLabel("检测")
+        title.setObjectName("heading")
+        root.addWidget(title)
+        sub = CaptionLabel("勾选目标 → 设置参数 → 开始检测；全局热键 F9 快速切换")
+        root.addWidget(sub)
+
+        root.addWidget(self._build_preview_card())
+        root.addWidget(self._build_target_card())
+        root.addWidget(self._build_settings_card())
+        root.addWidget(self._build_control_card())
+        root.addWidget(self._build_result_card())
+        root.addStretch()
+
+        self.screenshot_shortcut = QShortcut(QKeySequence("F12"), self)
+        self.screenshot_shortcut.activated.connect(self._take_screenshot)
+
+    def _card(self, title: str) -> tuple[CardWidget, QVBoxLayout]:
+        card = CardWidget()
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setSpacing(12)
+        if title:
+            t = SubtitleLabel(title)
+            lay.addWidget(t)
+        return card, lay
+
+    def _build_preview_card(self) -> CardWidget:
+        card, lay = self._card("屏幕预览")
         self.preview_label = QLabel()
         self.preview_label.setAlignment(Qt.AlignCenter)
-        self.preview_label.setMinimumSize(640, 480)
-        self.preview_label.setStyleSheet("""
-            QLabel {
-                background-color: #0a0a16;
-                border: 1px solid #2a2a4a;
-                border-radius: 8px;
-            }
-        """)
-        preview_layout.addWidget(self.preview_label)
+        self.preview_label.setMinimumHeight(400)
+        self.preview_label.setStyleSheet(
+            "background-color: #0a0a16; border: 1px solid #2a2a4a; border-radius: 8px;")
+        lay.addWidget(self.preview_label)
 
-        fps_frame = QFrame()
-        fps_layout = QHBoxLayout(fps_frame)
-        fps_layout.setContentsMargins(8, 4, 8, 4)
-        self.fps_label = QLabel("FPS: --")
-        self.fps_label.setStyleSheet("color: #8888a8; font-size: 12px;")
-        fps_layout.addWidget(self.fps_label)
-        fps_layout.addStretch()
-        preview_layout.addWidget(fps_frame)
+        self.fps_label = BodyLabel("FPS: --")
+        lay.addWidget(self.fps_label)
+        return card
 
-        # 右：控制
-        right_splitter = QSplitter(Qt.Vertical)
+    def _build_target_card(self) -> CardWidget:
+        card, lay = self._card("检测目标")
 
-        target_group = QGroupBox("检测目标")
-        target_layout = QVBoxLayout(target_group)
-        target_layout.setSpacing(8)
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        add_btn = PrimaryPushButton(FluentIcon.ADD, "添加目标")
+        add_btn.clicked.connect(self.add_target_requested.emit)
+        btn_row.addWidget(add_btn)
+        import_btn = PushButton(FluentIcon.FOLDER, "导入模型")
+        import_btn.clicked.connect(self.import_model_requested.emit)
+        btn_row.addWidget(import_btn)
+        self.select_all_btn = PushButton("全选")
+        self.select_all_btn.clicked.connect(lambda: self._set_all_checked(True))
+        btn_row.addWidget(self.select_all_btn)
+        self.deselect_all_btn = PushButton("全不选")
+        self.deselect_all_btn.clicked.connect(lambda: self._set_all_checked(False))
+        btn_row.addWidget(self.deselect_all_btn)
+        btn_row.addStretch()
+        lay.addLayout(btn_row)
 
-        self.target_table = QTableWidget(0, 5)
+        self.target_table = TableWidget()
         self.target_table.setHorizontalHeaderLabels(["", "名称", "优先级", "模型", "样本集"])
         header = self.target_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         header.setStretchLastSection(True)
+        self.target_table.setMinimumHeight(200)
         self.target_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.target_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.target_table.cellDoubleClicked.connect(self._on_target_cell_double_clicked)
         self.target_table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.target_table.customContextMenuRequested.connect(self._on_target_context_menu)
-        target_layout.addWidget(self.target_table)
+        lay.addWidget(self.target_table)
+        return card
 
-        target_btn_layout = QHBoxLayout()
-        target_btn_layout.setSpacing(8)
+    def _build_settings_card(self) -> CardWidget:
+        card, lay = self._card("检测设置")
 
-        self.select_all_btn = QPushButton("全选")
-        self.select_all_btn.clicked.connect(lambda: self._set_all_checked(True))
-        target_btn_layout.addWidget(self.select_all_btn)
-
-        self.deselect_all_btn = QPushButton("全不选")
-        self.deselect_all_btn.clicked.connect(lambda: self._set_all_checked(False))
-        target_btn_layout.addWidget(self.deselect_all_btn)
-
-        target_layout.addLayout(target_btn_layout)
-        right_splitter.addWidget(target_group)
-
-        # 检测设置
-        settings_group = QGroupBox("检测设置")
-        settings_layout = QVBoxLayout(settings_group)
-        settings_layout.setSpacing(12)
-
-        conf_frame = QFrame()
-        conf_layout = QHBoxLayout(conf_frame)
-        conf_layout.setContentsMargins(0, 0, 0, 0)
-
-        conf_label = QLabel("置信度:")
-        conf_label.setStyleSheet("color: #8888a8;")
-        conf_layout.addWidget(conf_label)
-
-        self.conf_slider = QSlider(Qt.Horizontal)
+        conf_label = BodyLabel("置信度")
+        lay.addWidget(conf_label)
+        conf_row = QHBoxLayout()
+        conf_row.setSpacing(12)
+        self.conf_slider = Slider(Qt.Horizontal)
         self.conf_slider.setRange(10, 99)
         self.conf_slider.setValue(50)
-        self.conf_value_label = QLabel("0.50")
-        self.conf_value_label.setStyleSheet("color: #a5b4fc; font-weight: 600;")
+        self.conf_value_label = BodyLabel("0.50")
+        self.conf_value_label.setMinimumWidth(48)
         self.conf_slider.valueChanged.connect(
             lambda v: self.conf_value_label.setText(f"{v / 100:.2f}"))
-        conf_layout.addWidget(self.conf_slider)
-        conf_layout.addWidget(self.conf_value_label)
-        settings_layout.addWidget(conf_frame)
+        conf_row.addWidget(self.conf_slider, 1)
+        conf_row.addWidget(self.conf_value_label)
+        lay.addLayout(conf_row)
 
-        fps_frame2 = QFrame()
-        fps_layout2 = QHBoxLayout(fps_frame2)
-        fps_layout2.setContentsMargins(0, 0, 0, 0)
-
-        fps_setting_label = QLabel("目标帧率:")
-        fps_setting_label.setStyleSheet("color: #8888a8;")
-        fps_layout2.addWidget(fps_setting_label)
-
-        self.fps_spin = QSpinBox()
+        fps_label = BodyLabel("目标帧率")
+        lay.addWidget(fps_label)
+        self.fps_spin = SpinBox()
         self.fps_spin.setRange(1, 60)
         self.fps_spin.setValue(10)
-        fps_layout2.addWidget(self.fps_spin)
-        settings_layout.addWidget(fps_frame2)
+        lay.addWidget(self.fps_spin)
 
-        self.priority_cb = QCheckBox("启用优先级 (数字越小优先级越高)")
-        settings_layout.addWidget(self.priority_cb)
+        self.priority_cb = CheckBox("启用优先级（数字越小优先级越高）")
+        lay.addWidget(self.priority_cb)
 
-        self.auto_click_cb = QCheckBox("自动点击")
-        settings_layout.addWidget(self.auto_click_cb)
+        self.auto_click_cb = CheckBox("自动点击")
+        lay.addWidget(self.auto_click_cb)
 
-        self.multi_click_label = QLabel("多目标同优先级点击:")
-        self.multi_click_label.setStyleSheet("color: #8888a8;")
-        settings_layout.addWidget(self.multi_click_label)
+        self.floating_auto_switch_cb = CheckBox("开始检测时自动切换到悬浮窗")
+        lay.addWidget(self.floating_auto_switch_cb)
 
+        lay.addWidget(BodyLabel("多目标同优先级点击策略"))
         self.multi_click_combo = QComboBox()
         self.multi_click_combo.addItems(["只点击一个", "点击所有实例"])
-        self.multi_click_combo.setToolTip("当多个相同优先级的目标被检测到时的点击策略")
-        self.multi_click_combo.setMinimumWidth(160)
-        settings_layout.addWidget(self.multi_click_combo)
+        self.multi_click_combo.setMinimumWidth(200)
+        lay.addWidget(self.multi_click_combo)
+        return card
 
-        self.floating_auto_switch_cb = QCheckBox("开始检测时自动切换到悬浮窗")
-        self.floating_auto_switch_cb.setToolTip("勾选后点击开始检测会自动进入悬浮窗模式")
-        settings_layout.addWidget(self.floating_auto_switch_cb)
-
-        right_splitter.addWidget(settings_group)
-
-        # 控制按钮 + 结果表（两行按钮，避免右栏过窄时挤压截断）
-        btn_group = QWidget()
-        btn_layout = QVBoxLayout(btn_group)
-        btn_layout.setSpacing(8)
-
+    def _build_control_card(self) -> CardWidget:
+        card, lay = self._card("控制")
         btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
+        btn_row.setSpacing(12)
 
         self.start_btn = QPushButton("开始检测")
         self.start_btn.setObjectName("success_btn")
+        self.start_btn.setMinimumHeight(36)
         self.start_btn.clicked.connect(self._toggle_detection)
         btn_row.addWidget(self.start_btn, 1)
 
-        self.screenshot_btn = QPushButton("截图")
+        self.screenshot_btn = PushButton(FluentIcon.CAMERA, "截图")
         self.screenshot_btn.clicked.connect(self._take_screenshot)
-        btn_row.addWidget(self.screenshot_btn, 1)
-        btn_layout.addLayout(btn_row)
+        btn_row.addWidget(self.screenshot_btn)
 
-        self.minimize_btn = QPushButton("缩小到悬浮窗")
+        self.minimize_btn = PushButton(FluentIcon.MINIMIZE, "缩小到悬浮窗")
         self.minimize_btn.clicked.connect(self._minimize_to_floating)
-        btn_layout.addWidget(self.minimize_btn)
+        btn_row.addWidget(self.minimize_btn)
+        lay.addLayout(btn_row)
+        return card
 
-        results_label = QLabel("检测结果:")
-        results_label.setStyleSheet("color: #8888a8; font-size: 12px; margin-top: 8px;")
-        btn_layout.addWidget(results_label)
-
-        self.result_table = QTableWidget(0, 5)
+    def _build_result_card(self) -> CardWidget:
+        card, lay = self._card("检测结果")
+        self.result_table = TableWidget()
         self.result_table.setHorizontalHeaderLabels(["目标", "来源", "置信度", "位置", "大小"])
         self.result_table.horizontalHeader().setStretchLastSection(True)
-        btn_layout.addWidget(self.result_table)
-
-        right_splitter.addWidget(btn_group)
-        right_splitter.setSizes([250, 180, 200])
-
-        main_splitter = QSplitter(Qt.Horizontal)
-        main_splitter.addWidget(preview_group)
-        main_splitter.addWidget(right_splitter)
-        main_splitter.setSizes([700, 300])
-        layout.addWidget(main_splitter)
-
-        self.screenshot_shortcut = QShortcut(QKeySequence("F12"), self)
-        self.screenshot_shortcut.activated.connect(self._take_screenshot)
+        self.result_table.setMinimumHeight(160)
+        lay.addWidget(self.result_table)
+        return card
 
     # ========== 目标表格 ==========
 
@@ -229,6 +219,40 @@ class DetectTab(QWidget):
         self._refresh_table_only()
         self._load_opencv_templates()
         self._start_model_loader()
+
+    def _refresh_table_only(self):
+        self.target_table.blockSignals(True)
+        try:
+            selected = {row: (self.target_table.cellWidget(row, COL_CHECK).isChecked()
+                              if self.target_table.cellWidget(row, COL_CHECK) else False)
+                        for row in range(self.target_table.rowCount())}
+            self.target_table.setRowCount(0)
+            for i, t in enumerate(self.tm.targets):
+                row = self.target_table.rowCount()
+                self.target_table.insertRow(row)
+                cb = CheckBox()
+                cb.setChecked(selected.get(i, t.enabled))
+                cb.stateChanged.connect(lambda state, tid=t.id: self._on_check_changed(tid, state))
+                self.target_table.setCellWidget(row, COL_CHECK, cb)
+
+                name_item = QTableWidgetItem(t.name)
+                name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
+                name_item.setData(Qt.UserRole, t.id)
+                self.target_table.setItem(row, COL_NAME, name_item)
+
+                pri_item = QTableWidgetItem(str(t.priority))
+                pri_item.setTextAlignment(Qt.AlignCenter)
+                self.target_table.setItem(row, COL_PRIORITY, pri_item)
+
+                model_item = QTableWidgetItem(self.ctx.target_model_label(t))
+                model_item.setFlags(model_item.flags() & ~Qt.ItemIsEditable)
+                self.target_table.setItem(row, COL_MODEL, model_item)
+
+                set_item = QTableWidgetItem(self.ctx.set_display_name(t.set_id))
+                set_item.setFlags(set_item.flags() & ~Qt.ItemIsEditable)
+                self.target_table.setItem(row, COL_SET, set_item)
+        finally:
+            self.target_table.blockSignals(False)
 
     def _on_check_changed(self, target_id: str, state: int):
         target = self.tm.get(target_id)
@@ -268,7 +292,7 @@ class DetectTab(QWidget):
         elif col == COL_PRIORITY:
             self.target_table.itemChanged.connect(self._on_priority_changed)
 
-    def _on_priority_changed(self, item: QTableWidgetItem):
+    def _on_priority_changed(self, item):
         try:
             self.target_table.itemChanged.disconnect(self._on_priority_changed)
         except (RuntimeError, TypeError):
@@ -306,13 +330,11 @@ class DetectTab(QWidget):
             f"  • 模型文件: {target.model_path or '无'}\n"
             f"  • 模板文件: {target.template_path or '无'}\n\n"
             f"此操作不可撤销！",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
-        )
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply != QMessageBox.Yes:
             return
         text, ok = QInputDialog.getText(
-            self, "最终确认",
-            f"请输入目标名称 '{target.name}' 以确认删除：")
+            self, "最终确认", f"请输入目标名称 '{target.name}' 以确认删除：")
         if not ok or text != target.name:
             QMessageBox.information(self, "取消", "名称不匹配，删除已取消")
             return
@@ -333,7 +355,6 @@ class DetectTab(QWidget):
     # ========== 模型装载 ==========
 
     def _start_model_loader(self):
-        """后台加载待装载的 AI 模型（无任务时为空操作）。"""
         jobs = self.ctx.pending_model_jobs()
         if not jobs or (self._model_loader is not None and self._model_loader.isRunning()):
             return
@@ -348,7 +369,6 @@ class DetectTab(QWidget):
             t = self.tm.get(tid)
             if t:
                 logger.info("AI 模型已加载: %s", t.name)
-        # 表格「模型」列从「未加载」更新为实际标签
         self._refresh_table_only()
 
     def _on_models_failed(self, errors: list):
@@ -358,37 +378,6 @@ class DetectTab(QWidget):
             name = t.name if t else target_id
             self.status_message.emit(f"模型加载失败 [{name}]: {err}")
         self._refresh_table_only()
-
-    def _refresh_table_only(self):
-        """只重建目标表格（不触发模板/模型加载）。"""
-        self.target_table.blockSignals(True)
-        try:
-            selected = {row: (self.target_table.cellWidget(row, COL_CHECK).isChecked()
-                              if self.target_table.cellWidget(row, COL_CHECK) else False)
-                        for row in range(self.target_table.rowCount())}
-            self.target_table.setRowCount(0)
-            for i, t in enumerate(self.tm.targets):
-                row = self.target_table.rowCount()
-                self.target_table.insertRow(row)
-                cb = QCheckBox()
-                cb.setChecked(selected.get(i, t.enabled))
-                cb.stateChanged.connect(lambda state, tid=t.id: self._on_check_changed(tid, state))
-                self.target_table.setCellWidget(row, COL_CHECK, cb)
-                name_item = QTableWidgetItem(t.name)
-                name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
-                name_item.setData(Qt.UserRole, t.id)
-                self.target_table.setItem(row, COL_NAME, name_item)
-                pri_item = QTableWidgetItem(str(t.priority))
-                pri_item.setTextAlignment(Qt.AlignCenter)
-                self.target_table.setItem(row, COL_PRIORITY, pri_item)
-                model_item = QTableWidgetItem(self.ctx.target_model_label(t))
-                model_item.setFlags(model_item.flags() & ~Qt.ItemIsEditable)
-                self.target_table.setItem(row, COL_MODEL, model_item)
-                set_item = QTableWidgetItem(self.ctx.set_display_name(t.set_id))
-                set_item.setFlags(set_item.flags() & ~Qt.ItemIsEditable)
-                self.target_table.setItem(row, COL_SET, set_item)
-        finally:
-            self.target_table.blockSignals(False)
 
     def _load_opencv_templates(self):
         detector = self.ctx.opencv_detector
@@ -415,7 +404,7 @@ class DetectTab(QWidget):
     def _start_detection(self):
         selected = set(self._selected_target_ids())
         if not selected:
-            QMessageBox.warning(self, "提示", "请先选择至少一个检测目标")
+            self.status_message.emit("请先选择至少一个检测目标")
             return
         if len(selected) > 4:
             reply = QMessageBox.question(
@@ -428,13 +417,6 @@ class DetectTab(QWidget):
         for t in self.tm.targets:
             t.enabled = t.id in selected
         self.tm.save()
-
-        # 模型没就绪的 AI 目标给出提示（后台加载未完成或失败）
-        missing = [t.name for t in self.tm.get_enabled()
-                   if t.detection_mode in ("ai", "both")
-                   and t.id not in self.ctx.ai_detectors]
-        if missing:
-            logger.warning("以下目标的 AI 模型未就绪: %s", ", ".join(missing))
 
         engine = DetectionEngine(
             capture=self.ctx.capture,
@@ -468,7 +450,6 @@ class DetectTab(QWidget):
         if self.detect_thread:
             worker, self.detect_thread = self.detect_thread, None
             if not worker.stop(timeout_ms=2000):
-                # 不阻塞 UI 等待长帧；线程完成当前帧后会自行退出（BUG-08）
                 self.status_message.emit("正在等待当前检测帧完成…")
         self.start_btn.setText("开始检测")
         self.start_btn.setObjectName("success_btn")
@@ -478,7 +459,6 @@ class DetectTab(QWidget):
             self.floating_window_requested.emit(False, False)
 
     def stop_if_running(self, timeout_ms: int = 8000) -> bool:
-        """若检测正在运行则停止（退出程序时给更长的收尾超时）。"""
         was_running = self.is_detecting
         if was_running and self.detect_thread is not None:
             worker = self.detect_thread
@@ -488,17 +468,14 @@ class DetectTab(QWidget):
 
     @Slot(str)
     def _on_detection_error(self, message: str):
-        """检测线程连续失败自动停止后复位 UI（BUG-02）。"""
         self.detect_thread = None
         self.start_btn.setText("开始检测")
         self.start_btn.setObjectName("success_btn")
         self.start_btn.style().unpolish(self.start_btn)
         self.start_btn.style().polish(self.start_btn)
         self.status_message.emit(message)
-        QMessageBox.warning(self, "检测已停止", message)
 
     def set_preview_enabled(self, enabled: bool):
-        """悬浮窗模式下关闭预览绘制，避免主线程每帧缩放开销（PERF-05）。"""
         self._preview_enabled = enabled
 
     @property
@@ -516,8 +493,8 @@ class DetectTab(QWidget):
                 label = f"{det.target_name}[{det.source}] {det.conf:.2f}"
                 cv2.putText(img, label, (det.x1, det.y1 - 5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (b, g, r), 1)
-
             qt_img = bgr_to_qimage(img)
+            from PySide6.QtGui import QPixmap
             pixmap = QPixmap.fromImage(qt_img)
             scaled = pixmap.scaled(self.preview_label.size(), Qt.KeepAspectRatio,
                                    Qt.SmoothTransformation)
@@ -534,19 +511,13 @@ class DetectTab(QWidget):
     @Slot(float)
     def _on_fps(self, fps: float):
         self.fps_label.setText(f"FPS: {fps:.1f}")
-        # 实测帧率显著低于目标时给出一次性提示（CPU 推理跟不上目标帧率）
         if not self._fps_warned and self.detect_thread is not None:
             target = self.detect_thread.engine.config.target_fps
             if fps < target * 0.7:
                 self._fps_warned = True
-                self.fps_label.setStyleSheet("color: #f59e0b; font-size: 12px;")
                 self.status_message.emit(
                     f"实测帧率 ({fps:.1f}) 低于目标 ({target})，"
                     f"可降低帧率/换更小模型/减少同时检测的目标数")
-        elif self._fps_warned and self.detect_thread is not None \
-                and fps >= self.detect_thread.engine.config.target_fps * 0.7:
-            self._fps_warned = False
-            self.fps_label.setStyleSheet("color: #8888a8; font-size: 12px;")
 
     # ========== 其他动作 ==========
 
@@ -564,6 +535,5 @@ class DetectTab(QWidget):
         self.floating_window_requested.emit(True, self.is_detecting)
 
     def showEvent(self, event):
-        """页签可见时仅刷新表格；模型加载由 refresh_targets 触发且有负缓存。"""
         super().showEvent(event)
         self.refresh_targets()

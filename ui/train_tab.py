@@ -1,11 +1,7 @@
-"""训练页：选择目标、准备数据集、启动/停止 YOLO 训练。
+"""训练页：选择目标、配置参数、启动/停止 YOLO 训练。
 
-相对历史版本的改动：
-- 停止训练真正生效：core.train_runner 通过 ultralytics 回调在 epoch
-  边界协作中止（旧版的停止标志从未被检查，必然走 terminate 强杀）；
-- worker 信号不再遮蔽 QThread.finished；
-- 数据集准备与超参推荐使用 core.dataset 纯函数；
-- 采样图片尺寸时限制数量，避免 UI 线程长时间读盘。
+布局：ScrollArea 卡片式布局。训练逻辑（后台线程协作停止、数据集组装、
+自动调参）与上一版一致，仅视图层换用 Fluent 组件。
 """
 
 from __future__ import annotations
@@ -15,14 +11,16 @@ import os
 
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
-    QComboBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout,
-    QLabel, QLineEdit, QMessageBox, QProgressBar, QPushButton, QSpinBox,
-    QTextEdit, QVBoxLayout, QWidget,
+    QComboBox, QFileDialog, QHBoxLayout, QLabel, QMessageBox, QVBoxLayout, QWidget,
+)
+from qfluentwidgets import (
+    BodyLabel, CardWidget, FluentIcon, LineEdit, PrimaryPushButton,
+    ProgressBar, PushButton, ScrollArea, SpinBox, SubtitleLabel, TextEdit,
 )
 
 from core import dataset as ds
-from core.image_io import imread
 from core.annotations import read_class_ids
+from core.image_io import imread
 from core.models import SampleSet
 from core.target_manager import TargetManager
 from core.train_runner import DatasetPrep, TrainConfig
@@ -31,15 +29,15 @@ from ui.workers.training_worker import TrainingWorker
 
 logger = logging.getLogger(__name__)
 
-# 自动调参时最多采样读取的图片数（控制 UI 线程耗时）
 _SIZE_SAMPLE_LIMIT = 8
 
 
-class TrainTab(QWidget):
+class TrainTab(ScrollArea):
     training_complete = Signal(str, str)  # model_path, target_id
 
     def __init__(self, ctx: AppContext, parent=None):
         super().__init__(parent)
+        self.setObjectName("trainInterface")
         self.ctx = ctx
         self.tm: TargetManager = ctx.tm
         self.train_worker: TrainingWorker | None = None
@@ -48,104 +46,120 @@ class TrainTab(QWidget):
     # ========== UI ==========
 
     def _init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        target_group = QGroupBox("选择目标")
-        target_layout = QHBoxLayout(target_group)
-        target_layout.setSpacing(12)
-        target_label = QLabel("训练目标:")
-        target_label.setStyleSheet("color: #8888a8;")
-        target_layout.addWidget(target_label)
+        content = QWidget()
+        self.setWidget(content)
+        root = QVBoxLayout(content)
+        root.setContentsMargins(20, 16, 20, 24)
+        root.setSpacing(12)
 
+        title = QLabel("训练")
+        title.setObjectName("heading")
+        root.addWidget(title)
+        root.addWidget(QLabel("为 AI 检测目标训练专属 YOLO 模型；停止为协作式（epoch 边界生效）"))
+
+        root.addWidget(self._build_target_card())
+        root.addWidget(self._build_params_card())
+        root.addWidget(self._build_control_card())
+        root.addWidget(self._build_log_card())
+        root.addStretch()
+
+    def _card(self, title: str) -> tuple[CardWidget, QVBoxLayout]:
+        card = CardWidget()
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setSpacing(12)
+        if title:
+            lay.addWidget(SubtitleLabel(title))
+        return card, lay
+
+    def _build_target_card(self) -> CardWidget:
+        card, lay = self._card("选择目标")
         self.target_combo = QComboBox()
         self.target_combo.currentIndexChanged.connect(self._on_target_changed)
-        target_layout.addWidget(self.target_combo)
-        layout.addWidget(target_group)
+        lay.addWidget(self.target_combo)
 
-        dataset_group = QGroupBox("数据集")
-        dataset_layout = QVBoxLayout(dataset_group)
-        dataset_layout.setSpacing(8)
-        self.dataset_info = QLabel("请先选择目标")
-        self.dataset_info.setStyleSheet("color: #e8e8f0;")
-        dataset_layout.addWidget(self.dataset_info)
+        self.dataset_info = BodyLabel("请先选择目标")
+        lay.addWidget(self.dataset_info)
 
-        refresh_btn = QPushButton("刷新")
+        refresh_btn = PushButton(FluentIcon.SYNC, "刷新数据集信息")
         refresh_btn.clicked.connect(self._update_dataset_info)
-        dataset_layout.addWidget(refresh_btn)
-        layout.addWidget(dataset_group)
+        lay.addWidget(refresh_btn)
+        return card
 
-        params_group = QGroupBox("训练参数")
-        params_layout = QFormLayout(params_group)
-        params_layout.setSpacing(12)
-        params_layout.setLabelAlignment(Qt.AlignRight)
+    def _build_params_card(self) -> CardWidget:
+        card, lay = self._card("训练参数")
 
+        lay.addWidget(BodyLabel("基础模型"))
         model_row = QHBoxLayout()
         model_row.setSpacing(8)
         self.model_combo = QComboBox()
         self.model_combo.setEditable(True)
         self.model_combo.addItems(["yolov8n.pt", "yolov8s.pt", "yolov8m.pt"])
-        browse_model_btn = QPushButton("浏览...")
-        browse_model_btn.setMinimumWidth(84)
+        browse_model_btn = PushButton(FluentIcon.FOLDER, "浏览...")
         browse_model_btn.clicked.connect(self._browse_base_model)
-        model_row.addWidget(self.model_combo)
+        model_row.addWidget(self.model_combo, 1)
         model_row.addWidget(browse_model_btn)
-        params_layout.addRow("基础模型:", model_row)
+        lay.addLayout(model_row)
 
-        save_path_layout = QHBoxLayout()
-        save_path_layout.setSpacing(8)
-        self.save_path_edit = QLineEdit()
+        lay.addWidget(BodyLabel("模型保存位置"))
+        save_row = QHBoxLayout()
+        save_row.setSpacing(8)
+        self.save_path_edit = LineEdit()
         self.save_path_edit.setPlaceholderText("留空则使用默认路径 (runs/detect/train/weights/)")
-        browse_save_btn = QPushButton("浏览...")
-        browse_save_btn.setMinimumWidth(84)
+        browse_save_btn = PushButton(FluentIcon.FOLDER, "浏览...")
         browse_save_btn.clicked.connect(self._browse_save_path)
-        save_path_layout.addWidget(self.save_path_edit)
-        save_path_layout.addWidget(browse_save_btn)
-        params_layout.addRow("模型保存位置:", save_path_layout)
+        save_row.addWidget(self.save_path_edit, 1)
+        save_row.addWidget(browse_save_btn)
+        lay.addLayout(save_row)
 
-        self.epochs_spin = QSpinBox()
+        lay.addWidget(BodyLabel("训练轮数 (epochs)"))
+        self.epochs_spin = SpinBox()
         self.epochs_spin.setRange(1, 1000)
         self.epochs_spin.setValue(50)
-        params_layout.addRow("训练轮数:", self.epochs_spin)
+        lay.addWidget(self.epochs_spin)
 
-        self.batch_spin = QSpinBox()
+        lay.addWidget(BodyLabel("批次大小 (batch)"))
+        self.batch_spin = SpinBox()
         self.batch_spin.setRange(1, 64)
         self.batch_spin.setValue(16)
-        params_layout.addRow("批次大小:", self.batch_spin)
+        lay.addWidget(self.batch_spin)
 
-        self.imgsize_spin = QSpinBox()
+        lay.addWidget(BodyLabel("图片尺寸 (imgsz)"))
+        self.imgsize_spin = SpinBox()
         self.imgsize_spin.setRange(320, 1280)
         self.imgsize_spin.setValue(640)
         self.imgsize_spin.setSingleStep(32)
-        params_layout.addRow("图片尺寸:", self.imgsize_spin)
-        layout.addWidget(params_group)
+        lay.addWidget(self.imgsize_spin)
+        return card
 
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(12)
-        self.train_btn = QPushButton("开始训练")
-        self.train_btn.setObjectName("success_btn")
+    def _build_control_card(self) -> CardWidget:
+        card, lay = self._card("控制")
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        self.train_btn = PrimaryPushButton(FluentIcon.PLAY, "开始训练")
         self.train_btn.clicked.connect(self._start_training)
-        btn_layout.addWidget(self.train_btn)
-
-        self.stop_btn = QPushButton("停止")
-        self.stop_btn.setObjectName("danger_btn")
+        row.addWidget(self.train_btn)
+        self.stop_btn = PushButton(FluentIcon.CLOSE, "停止")
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self._stop_training)
-        btn_layout.addWidget(self.stop_btn)
-        layout.addLayout(btn_layout)
+        row.addWidget(self.stop_btn)
+        row.addStretch()
+        lay.addLayout(row)
 
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setTextVisible(True)
-        layout.addWidget(self.progress_bar)
+        self.progress_bar = ProgressBar()
+        lay.addWidget(self.progress_bar)
+        return card
 
-        log_group = QGroupBox("训练日志")
-        log_layout = QVBoxLayout(log_group)
-        log_layout.setSpacing(8)
-        self.log_text = QTextEdit()
+    def _build_log_card(self) -> CardWidget:
+        card, lay = self._card("训练日志")
+        self.log_text = TextEdit()
         self.log_text.setReadOnly(True)
-        log_layout.addWidget(self.log_text)
-        layout.addWidget(log_group)
+        self.log_text.setMinimumHeight(220)
+        lay.addWidget(self.log_text)
+        return card
 
     # ========== 浏览与选择 ==========
 
@@ -250,7 +264,6 @@ class TrainTab(QWidget):
             f"标注: {stats['label_count']} 条  |  类别: {class_info}")
 
     def _auto_adjust_params(self):
-        """按数据集规模/尺寸推荐超参（采样受限，不会长时间阻塞 UI）。"""
         target = self._get_current_target()
         if not target:
             return
@@ -322,8 +335,6 @@ class TrainTab(QWidget):
         save_path = self.save_path_edit.text().strip()
         project_dir = save_path if save_path else os.path.join(ds_dir, "runs")
 
-        # 数据集组装（含负样本与 train/val 划分）在训练 worker 的后台
-        # 线程执行，不在 UI 线程逐张复制文件（BUG-14）
         self.train_worker = TrainingWorker(TrainConfig(
             model_base=self.model_combo.currentText(),
             epochs=self.epochs_spin.value(),
@@ -352,7 +363,6 @@ class TrainTab(QWidget):
         self.progress_bar.setRange(0, 0)
 
     def _stop_training(self):
-        """协作停止：epoch 边界生效，训练器正常收尾，无需 terminate。"""
         if self.train_worker is None:
             return
         self.log_text.append("正在停止训练（等待当前 epoch 结束）...")
@@ -365,7 +375,6 @@ class TrainTab(QWidget):
         if not model_path or not os.path.exists(model_path):
             self.log_text.append(f"\n✗ 训练结束但未找到模型文件: {model_path or '(空)'}")
             return
-
         mark = "▪ 训练已停止，使用已保存的权重" if stopped else "✓ 训练完成!"
         self.log_text.append(f"\n{mark} 模型: {model_path}")
         target = self.tm.get(target_id)

@@ -1,10 +1,6 @@
 """OpenCV 模板页：模板的创建、框选、上传、测试与删除。
 
-相对历史版本的改动：
-- 画布/颜色委托/图像转换使用共享组件；
-- 散落的 print 调试输出（_verify_template 等约 60 行）改为 logging
-  debug 级别，正常使用不再刷屏；
-- 截图统一走 capture_by_config。
+布局：ScrollArea 卡片式布局。模板匹配/保存等业务逻辑不变。
 """
 
 from __future__ import annotations
@@ -12,15 +8,17 @@ from __future__ import annotations
 import logging
 import os
 
-import cv2
 import numpy as np
-from PySide6.QtCore import QRect, Qt, Signal, Slot
+from PySide6.QtCore import QRect, Qt, Slot
 from PySide6.QtGui import QBrush, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QAbstractItemView, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
-    QGroupBox, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMessageBox,
-    QPushButton, QSplitter, QTableWidget, QTableWidgetItem,
+    QAbstractItemView, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout,
+    QHeaderView, QInputDialog, QLabel, QMessageBox, QTableWidgetItem,
     QVBoxLayout, QWidget,
+)
+from qfluentwidgets import (
+    BodyLabel, CardWidget, DoubleSpinBox, FluentIcon, PrimaryPushButton,
+    PushButton, ScrollArea, SubtitleLabel, TableWidget,
 )
 
 from core.capture import CaptureError, ScreenCapture
@@ -38,9 +36,10 @@ COL_COLOR, COL_NAME, COL_THRESHOLD, COL_STATUS = 0, 1, 2, 3
 SCREENSHOTS_DIR = os.path.join("data", "screenshots", "opencv")
 
 
-class OpenCVTab(QWidget):
+class OpenCVTab(ScrollArea):
     def __init__(self, ctx: AppContext, parent=None):
         super().__init__(parent)
+        self.setObjectName("opencvInterface")
         self.ctx = ctx
         self.tm: TargetManager = ctx.tm
         self.detector = ctx.opencv_detector
@@ -52,87 +51,91 @@ class OpenCVTab(QWidget):
     # ========== UI ==========
 
     def _init_ui(self):
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        left_group = QGroupBox("模板截取")
-        left_layout = QVBoxLayout(left_group)
-        left_layout.setSpacing(8)
+        content = QWidget()
+        self.setWidget(content)
+        root = QVBoxLayout(content)
+        root.setContentsMargins(20, 16, 20, 24)
+        root.setSpacing(12)
 
+        title = QLabel("OpenCV 模板")
+        title.setObjectName("heading")
+        root.addWidget(title)
+        root.addWidget(QLabel("无需训练的轻量检测方案：截图 → 框选模板区域 → 测试匹配"))
+
+        root.addWidget(self._build_capture_card())
+        root.addWidget(self._build_template_card())
+        root.addStretch()
+
+        self.screenshot_shortcut = QShortcut(QKeySequence("F12"), self)
+        self.screenshot_shortcut.activated.connect(self._take_screenshot)
+
+    def _card(self, title: str) -> tuple[CardWidget, QVBoxLayout]:
+        card = CardWidget()
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setSpacing(12)
+        if title:
+            lay.addWidget(SubtitleLabel(title))
+        return card, lay
+
+    def _build_capture_card(self) -> CardWidget:
+        card, lay = self._card("模板截取")
         self.canvas = ImageCanvas()
         self.canvas.region_drawn.connect(self._on_region_selected)
-        left_layout.addWidget(self.canvas)
+        lay.addWidget(self.canvas)
 
-        self.capture_btn = QPushButton("截取屏幕 (F12)")
+        self.capture_btn = PushButton(FluentIcon.CAMERA, "截取屏幕 (F12)")
         self.capture_btn.clicked.connect(self._take_screenshot)
-        left_layout.addWidget(self.capture_btn)
+        lay.addWidget(self.capture_btn)
 
-        self.selection_info = QLabel("请截取屏幕后框选模板区域")
-        self.selection_info.setStyleSheet("color: #8888a8;")
-        left_layout.addWidget(self.selection_info)
+        self.selection_info = BodyLabel("请截取屏幕后框选模板区域")
+        lay.addWidget(self.selection_info)
+        return card
 
-        layout.addWidget(left_group, stretch=2)
+    def _build_template_card(self) -> CardWidget:
+        card, lay = self._card("模板管理")
 
-        right_group = QGroupBox("模板管理")
-        right_layout = QVBoxLayout(right_group)
-        right_layout.setSpacing(12)
-
-        table_label = QLabel("已添加的模板:")
-        table_label.setStyleSheet("color: #8888a8; font-size: 12px;")
-        right_layout.addWidget(table_label)
-
-        self.template_table = QTableWidget(0, 4)
+        self.template_table = TableWidget()
         self.template_table.setHorizontalHeaderLabels(["颜色", "名称", "阈值", "状态"])
         self.template_table.setItemDelegateForColumn(COL_COLOR, ColorDelegate(self.template_table))
         header = self.template_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         header.setStretchLastSection(True)
+        self.template_table.setMinimumHeight(200)
         self.template_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.template_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.template_table.currentCellChanged.connect(self._on_template_selected)
         self.template_table.cellDoubleClicked.connect(self._on_cell_double_clicked)
         self.template_table.itemChanged.connect(self._on_item_changed)
-        right_layout.addWidget(self.template_table)
+        lay.addWidget(self.template_table)
 
-        threshold_label = QLabel("新模板匹配阈值:")
-        threshold_label.setStyleSheet("color: #8888a8; font-size: 12px;")
-        right_layout.addWidget(threshold_label)
-
-        self.threshold_spin = QDoubleSpinBox()
+        lay.addWidget(BodyLabel("新模板匹配阈值"))
+        self.threshold_spin = DoubleSpinBox()
         self.threshold_spin.setRange(0.1, 1.0)
         self.threshold_spin.setValue(0.8)
         self.threshold_spin.setSingleStep(0.05)
-        right_layout.addWidget(self.threshold_spin)
+        lay.addWidget(self.threshold_spin)
 
-        target_btn_layout = QHBoxLayout()
-        target_btn_layout.setSpacing(8)
-
-        self.add_btn = QPushButton("增加")
-        self.add_btn.setObjectName("primary_btn")
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.add_btn = PrimaryPushButton(FluentIcon.ADD, "增加")
         self.add_btn.clicked.connect(self._add_template)
-        target_btn_layout.addWidget(self.add_btn)
-
-        self.upload_btn = QPushButton("上传")
+        row.addWidget(self.add_btn)
+        self.upload_btn = PushButton(FluentIcon.UP, "上传")
         self.upload_btn.clicked.connect(self._upload_template)
-        target_btn_layout.addWidget(self.upload_btn)
-
-        self.remove_template_btn = QPushButton("删除")
-        self.remove_template_btn.setObjectName("danger_btn")
+        row.addWidget(self.upload_btn)
+        self.remove_template_btn = PushButton(FluentIcon.DELETE, "删除")
         self.remove_template_btn.clicked.connect(self._remove_template)
-        target_btn_layout.addWidget(self.remove_template_btn)
-        right_layout.addLayout(target_btn_layout)
-
-        self.test_btn = QPushButton("测试匹配")
-        self.test_btn.setObjectName("success_btn")
+        row.addWidget(self.remove_template_btn)
+        self.test_btn = PrimaryPushButton(FluentIcon.PLAY, "测试匹配")
         self.test_btn.clicked.connect(self._test_match)
-        right_layout.addWidget(self.test_btn)
-
-        right_layout.addStretch()
-        layout.addWidget(right_group, stretch=1)
-
-        self.screenshot_shortcut = QShortcut(QKeySequence("F12"), self)
-        self.screenshot_shortcut.activated.connect(self._take_screenshot)
+        row.addWidget(self.test_btn)
+        row.addStretch()
+        lay.addLayout(row)
+        return card
 
     # ========== 截图与显示 ==========
 
@@ -328,7 +331,7 @@ class OpenCVTab(QWidget):
         self.selection_info.setText(f"模板 '{target.name}' 暂无图片，请截图或上传")
 
     def _show_template_location(self, source_img: np.ndarray, target: Target):
-        """在源图上标出模板当前匹配位置。"""
+        import cv2
         if not self._template_has_image(target):
             return
         template_img = imread(target.template_path)
@@ -371,7 +374,7 @@ class OpenCVTab(QWidget):
                 self.tm.save()
                 self._refresh_table()
 
-    def _on_item_changed(self, item: QTableWidgetItem):
+    def _on_item_changed(self, item):
         if self._block_save:
             return
         targets = self._opencv_targets()
@@ -401,6 +404,7 @@ class OpenCVTab(QWidget):
             self.selection_info.setText("未匹配到任何目标")
             return
 
+        import cv2
         img = self._current_screenshot.copy()
         for det in detections:
             target = self.tm.get(det.target_id)

@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "window": {
-    "x": 22,
-    "y": -7,
-    "width": 1536,
-    "height": 800,
-    "maximized": false,
+    "x": 0,
+    "y": 0,
+    "width": 796,
+    "height": 796,
+    "maximized": true,
     "active_tab": 0
   },
   "detect": {
