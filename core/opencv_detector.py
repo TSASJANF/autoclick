@@ -1,102 +1,101 @@
+"""OpenCV 模板匹配检测器。
+
+相对历史版本的性能修复（本模块运行在 10FPS 检测热路径上）：
+1. 移除每帧对 matchTemplate 结果矩阵的 min/mean 全图归约 —— 旧版这两
+   个值只为 debug 日志计算，纯浪费；
+2. 阈值命中点不再全量生成 Detection 再 O(n²) NMS。平坦匹配区会产生
+   数千个相邻命中点，旧版先构造数千对象再两两IoU。现按匹配分数取
+   top-K 候选再抑制，复杂度与候选数解耦；
+3. 结构体统一为 core.models.Detection。
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from typing import Optional
+
 import cv2
 import numpy as np
-import logging
+
+from .image_io import imread
+from .models import Detection, nms
 
 logger = logging.getLogger(__name__)
 
-
-class OpenCVDetection:
-    def __init__(self, x1: int, y1: int, x2: int, y2: int, conf: float, target_id: str, target_name: str):
-        self.x1 = x1
-        self.y1 = y1
-        self.x2 = x2
-        self.y2 = y2
-        self.conf = conf
-        self.target_id = target_id
-        self.target_name = target_name
-
-    @property
-    def center(self) -> tuple[int, int]:
-        return ((self.x1 + self.x2) // 2, (self.y1 + self.y2) // 2)
+# 每个模板最多保留的候选命中数（按分数排序），随后做 NMS
+_MAX_CANDIDATES = 32
 
 
-class OpenCVDetector:
+class TemplateDetector:
+    """多模板管理 + matchTemplate 检测。目标间模板互不影响，线程安全
+    （dict 读写依赖 GIL 原子性；检测期间模板集快照使用）。"""
+
     def __init__(self):
-        self.templates: dict[str, np.ndarray] = {}  # target_id -> template image (BGR)
-        self.thresholds: dict[str, float] = {}  # target_id -> threshold
+        self.templates: dict[str, np.ndarray] = {}   # target_id -> BGR 模板
+        self.thresholds: dict[str, float] = {}       # target_id -> 阈值
 
-    def load_template(self, target_id: str, template_path: str, threshold: float = 0.8) -> bool:
-        """Load a template image. Returns True on success."""
-        img = cv2.imread(template_path)
-        if img is not None:
-            self.templates[target_id] = img
-            self.thresholds[target_id] = threshold
-            logger.debug(f"模板已加载: {target_id}, 路径: {template_path}, 尺寸: {img.shape}, 阈值: {threshold}")
-            return True
-        else:
-            logger.debug(f"模板加载失败: {target_id}, 路径: {template_path}")
+    def load_template(self, target_id: str, template_path: str,
+                      threshold: float = 0.8) -> bool:
+        """加载模板图，成功返回 True。"""
+        img = imread(template_path)
+        if img is None:
+            logger.warning("模板加载失败: %s, 路径: %s", target_id, template_path)
             return False
+        self.templates[target_id] = img
+        self.thresholds[target_id] = threshold
+        return True
 
-    def remove_template(self, target_id: str):
+    def remove_template(self, target_id: str) -> None:
         self.templates.pop(target_id, None)
         self.thresholds.pop(target_id, None)
 
-    def detect(self, image: np.ndarray, target_ids: list[str] | None = None) -> list[OpenCVDetection]:
-        detections = []
-        ids = target_ids or list(self.templates.keys())
-        logger.debug(f"开始检测, 已加载模板: {list(self.templates.keys())}, 输入图像尺寸: {image.shape}")
+    def has_template(self, target_id: str) -> bool:
+        return target_id in self.templates
+
+    def detect(self, image: np.ndarray, target_id: str = "",
+               target_name: str = "", color: str = "",
+               threshold_override: Optional[float] = None) -> list[Detection]:
+        """对给定目标 ID 列表（缺省为全部已加载模板）做模板匹配。"""
+        ids = [target_id] if target_id else list(self.templates.keys())
+        detections: list[Detection] = []
+
+        templates = dict(self.templates)   # 快照，避免与并发加载竞争
+        thresholds = dict(self.thresholds)
 
         for tid in ids:
-            template = self.templates.get(tid)
+            template = templates.get(tid)
             if template is None:
-                logger.debug(f"模板 {tid} 未加载, 跳过")
                 continue
-            threshold = self.thresholds.get(tid, 0.8)
-
-            # Multi-scale matching for robustness
+            threshold = threshold_override or thresholds.get(tid, 0.8)
             th, tw = template.shape[:2]
+            if image.shape[0] < th or image.shape[1] < tw:
+                continue  # 模板比图像还大，必然无匹配
+
             result = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
-            max_val = np.max(result)
-            min_val = np.min(result)
-            mean_val = np.mean(result)
-            logger.debug(f"模板 {tid}: 尺寸={tw}x{th}, 阈值={threshold}, 匹配度: 最大={max_val:.4f}, 最小={min_val:.4f}, 平均={mean_val:.4f}")
-            locations = np.where(result >= threshold)
-            logger.debug(f"模板 {tid}: 找到 {len(locations[0])} 个匹配位置")
+            detections.extend(self._extract_hits(
+                result, tw, th, threshold, tid, target_name, color))
 
-            for pt in zip(*locations[::-1]):
-                x1, y1 = int(pt[0]), int(pt[1])
-                x2, y2 = x1 + tw, y1 + th
-                conf = float(result[pt[1], pt[0]])
-                detections.append(OpenCVDetection(x1, y1, x2, y2, conf, tid, tid))
-
-        # Non-maximum suppression for overlapping detections
-        return self._nms(detections)
-
-    def _nms(self, detections: list[OpenCVDetection], iou_thresh: float = 0.3) -> list[OpenCVDetection]:
-        if not detections:
-            return []
-        # Sort by confidence descending
-        detections.sort(key=lambda d: d.conf, reverse=True)
-        keep = []
-        for det in detections:
-            # Check overlap with already kept detections
-            is_dup = False
-            for kept in keep:
-                if det.target_id == kept.target_id and self._iou(det, kept) > iou_thresh:
-                    is_dup = True
-                    break
-            if not is_dup:
-                keep.append(det)
-        return keep
+        # 同一目标内的重叠命中去重
+        return nms(detections, iou_threshold=0.3, same_target_only=True)
 
     @staticmethod
-    def _iou(a: OpenCVDetection, b: OpenCVDetection) -> float:
-        x1 = max(a.x1, b.x1)
-        y1 = max(a.y1, b.y1)
-        x2 = min(a.x2, b.x2)
-        y2 = min(a.y2, b.y2)
-        inter = max(0, x2 - x1) * max(0, y2 - y1)
-        area_a = (a.x2 - a.x1) * (a.y2 - a.y1)
-        area_b = (b.x2 - b.x1) * (b.y2 - b.y1)
-        union = area_a + area_b - inter
-        return inter / union if union > 0 else 0
+    def _extract_hits(result: np.ndarray, tw: int, th: int, threshold: float,
+                      tid: str, target_name: str, color: str) -> list[Detection]:
+        """从匹配分数矩阵提取 top-K 候选命中。"""
+        n = result.size
+        k = min(_MAX_CANDIDATES, n)
+        if k < n:
+            # argpartition 取 top-K 分数位置，避免全矩阵排序
+            flat_idx = np.argpartition(result.ravel(), n - k)[n - k:]
+        else:
+            flat_idx = np.arange(n)
+
+        hits: list[Detection] = []
+        for idx in flat_idx:
+            y, x = divmod(int(idx), result.shape[1])
+            score = float(result[y, x])
+            if score >= threshold:
+                hits.append(Detection(x, y, x + tw, y + th, score,
+                                      tid, target_name, color, "opencv"))
+        return hits

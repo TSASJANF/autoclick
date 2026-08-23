@@ -1,12 +1,27 @@
-import ctypes
-import time
+"""鼠标点击（Win32 SendInput）。
 
-# Windows SendInput constants
+修复历史缺陷：旧实现用 GetSystemMetrics(0/1)（仅主显示器）做绝对坐标
+换算，多显示器环境下副屏坐标会被错误映射到主屏。现使用虚拟桌面
+（SM_*VIRTUALSCREEN）+ MOUSEEVENTF_VIRTUALDESK；单显示器下虚拟桌面
+即主屏，行为与旧版一致。
+"""
+
+from __future__ import annotations
+
+import ctypes
+
+# Windows SendInput 常量
 INPUT_MOUSE = 0
 MOUSEEVENTF_MOVE = 0x0001
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
 MOUSEEVENTF_ABSOLUTE = 0x8000
+MOUSEEVENTF_VIRTUALDESK = 0x4000
+
+SM_XVIRTUALSCREEN = 76
+SM_YVIRTUALSCREEN = 77
+SM_CXVIRTUALSCREEN = 78
+SM_CYVIRTUALSCREEN = 79
 
 user32 = ctypes.windll.user32
 
@@ -32,44 +47,50 @@ class INPUT(ctypes.Structure):
     ]
 
 
-def _send_input(*inputs: INPUT):
+def _virtual_screen() -> tuple[int, int, int, int]:
+    """返回 (x, y, w, h)：整个虚拟桌面的原点与尺寸。"""
+    return (
+        user32.GetSystemMetrics(SM_XVIRTUALSCREEN),
+        user32.GetSystemMetrics(SM_YVIRTUALSCREEN),
+        user32.GetSystemMetrics(SM_CXVIRTUALSCREEN),
+        user32.GetSystemMetrics(SM_CYVIRTUALSCREEN),
+    )
+
+
+def _to_absolute(x: int, y: int) -> tuple[int, int]:
+    """屏幕像素坐标 -> 虚拟桌面绝对坐标 (0-65535)。"""
+    vx, vy, vw, vh = _virtual_screen()
+    abs_x = int((x - vx) * 65535 / max(vw, 1))
+    abs_y = int((y - vy) * 65535 / max(vh, 1))
+    return abs_x, abs_y
+
+
+def _send_input(*inputs: INPUT) -> None:
     n = len(inputs)
     arr = (INPUT * n)(*inputs)
     user32.SendInput(n, arr, ctypes.sizeof(INPUT))
 
 
-class Clicker:
-    @staticmethod
-    def click(x: int, y: int, move_first: bool = True):
-        screen_w = user32.GetSystemMetrics(0)
-        screen_h = user32.GetSystemMetrics(1)
+def click(x: int, y: int, move_first: bool = True) -> None:
+    """在屏幕像素坐标 (x, y) 处模拟一次左键点击。"""
+    abs_x, abs_y = _to_absolute(x, y)
+    flags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
+    inputs: list[INPUT] = []
 
-        # Convert to absolute coordinates (0-65535)
-        abs_x = int(x * 65535 / screen_w)
-        abs_y = int(y * 65535 / screen_h)
+    if move_first:
+        move = INPUT()
+        move.type = INPUT_MOUSE
+        move._input.mi.dx = abs_x
+        move._input.mi.dy = abs_y
+        move._input.mi.dwFlags = MOUSEEVENTF_MOVE | flags
+        inputs.append(move)
 
-        inputs = []
+    for event_flag in (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP):
+        ev = INPUT()
+        ev.type = INPUT_MOUSE
+        ev._input.mi.dx = abs_x
+        ev._input.mi.dy = abs_y
+        ev._input.mi.dwFlags = event_flag | flags
+        inputs.append(ev)
 
-        if move_first:
-            move = INPUT()
-            move.type = INPUT_MOUSE
-            move._input.mi.dx = abs_x
-            move._input.mi.dy = abs_y
-            move._input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE
-            inputs.append(move)
-
-        down = INPUT()
-        down.type = INPUT_MOUSE
-        down._input.mi.dx = abs_x
-        down._input.mi.dy = abs_y
-        down._input.mi.dwFlags = MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_ABSOLUTE
-        inputs.append(down)
-
-        up = INPUT()
-        up.type = INPUT_MOUSE
-        up._input.mi.dx = abs_x
-        up._input.mi.dy = abs_y
-        up._input.mi.dwFlags = MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE
-        inputs.append(up)
-
-        _send_input(*inputs)
+    _send_input(*inputs)

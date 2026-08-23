@@ -1,53 +1,23 @@
-import json
+"""样本集仓库：data/sets/ 目录与 sets_index.json 的管理。"""
+
+from __future__ import annotations
+
+import datetime
+import logging
 import os
 import shutil
-from dataclasses import dataclass, asdict
 from typing import Optional
 
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-SETS_ROOT = os.path.join(BASE_DIR, "data", "sets")
-SETS_INDEX_FILE = os.path.join(SETS_ROOT, "sets_index.json")
+from . import paths
+from . import json_store
+from .models import SampleSet
+
+logger = logging.getLogger(__name__)
 
 
-@dataclass
-class SampleSet:
-    id: str  # e.g. "set_1"
-    name: str  # e.g. "样本集1"
-    created_at: str  # ISO timestamp
-    negative_sample_ratio: int = 20  # 负样本占总训练集的百分比 (10-30)
-    negative_min_positive: int = 5  # 启用负样本的最小正样本数 (1-100)
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, d: dict) -> "SampleSet":
-        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
-
-    @property
-    def dir_path(self) -> str:
-        """Return the root directory for this sample set."""
-        return os.path.join(SETS_ROOT, self.id)
-
-    @property
-    def images_dir(self) -> str:
-        """Return the images directory for this sample set."""
-        return os.path.join(SETS_ROOT, self.id, "images")
-
-    @property
-    def targets_dir(self) -> str:
-        """Return the targets directory for this sample set."""
-        return os.path.join(SETS_ROOT, self.id, "targets")
-
-    @property
-    def session_file(self) -> str:
-        """Return the session.json path for this sample set."""
-        return os.path.join(SETS_ROOT, self.id, "session.json")
-
-    @property
-    def set_json_path(self) -> str:
-        """Return the set.json path for this sample set."""
-        return os.path.join(SETS_ROOT, self.id, "set.json")
+def set_root(set_id: str) -> str:
+    """样本集根目录（绝对路径）。"""
+    return os.path.join(paths.SETS_DIR, set_id)
 
 
 class SampleSetManager:
@@ -55,34 +25,32 @@ class SampleSetManager:
         self.sets: list[SampleSet] = []
         self._next_id = 1
 
+    # ── 增删改 ────────────────────────────────────────────────────────
+
     def add(self, name: str) -> SampleSet:
-        """Create a new sample set with directory structure."""
-        import datetime
         sid = f"set_{self._next_id}"
         self._next_id += 1
-        now = datetime.datetime.now().isoformat(timespec="seconds")
-        ss = SampleSet(id=sid, name=name, created_at=now)
-        # Create directory structure
-        os.makedirs(ss.images_dir, exist_ok=True)
-        os.makedirs(ss.targets_dir, exist_ok=True)
-        # Write set.json
+        ss = SampleSet(id=sid, name=name,
+                       created_at=datetime.datetime.now().isoformat(timespec="seconds"))
+        os.makedirs(self.images_dir(ss.id), exist_ok=True)
+        os.makedirs(self.targets_dir(ss.id), exist_ok=True)
         self._write_set_json(ss)
         self.sets.append(ss)
         self.save()
         return ss
 
-    def remove(self, set_id: str, delete_files: bool = True):
-        """Remove a sample set. Optionally delete its directory."""
+    def remove(self, set_id: str, delete_files: bool = True) -> None:
         ss = self.get(set_id)
         if ss is None:
             return
-        if delete_files and os.path.exists(ss.dir_path):
-            shutil.rmtree(ss.dir_path)
+        if delete_files:
+            root = set_root(set_id)
+            if os.path.exists(root):
+                shutil.rmtree(root, ignore_errors=True)
         self.sets = [s for s in self.sets if s.id != set_id]
         self.save()
 
-    def rename(self, set_id: str, new_name: str):
-        """Rename a sample set."""
+    def rename(self, set_id: str, new_name: str) -> None:
         ss = self.get(set_id)
         if ss is None:
             return
@@ -91,8 +59,7 @@ class SampleSetManager:
         self.save()
 
     def update_settings(self, set_id: str, negative_sample_ratio: int | None = None,
-                        negative_min_positive: int | None = None):
-        """Update sample set settings."""
+                        negative_min_positive: int | None = None) -> None:
         ss = self.get(set_id)
         if ss is None:
             return
@@ -103,53 +70,54 @@ class SampleSetManager:
         self._write_set_json(ss)
         self.save()
 
+    # ── 查询 ──────────────────────────────────────────────────────────
+
     def get(self, set_id: str) -> Optional[SampleSet]:
-        for s in self.sets:
-            if s.id == set_id:
-                return s
-        return None
+        return next((s for s in self.sets if s.id == set_id), None)
 
     def get_all(self) -> list[SampleSet]:
         return list(self.sets)
 
-    def save(self):
-        """Save sets index to sets_index.json."""
-        os.makedirs(SETS_ROOT, exist_ok=True)
-        data = [s.to_dict() for s in self.sets]
-        tmp_path = SETS_INDEX_FILE + ".tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_path, SETS_INDEX_FILE)
-
-    def load(self):
-        """Load sets index from sets_index.json."""
-        if not os.path.exists(SETS_INDEX_FILE):
-            return
-        try:
-            with open(SETS_INDEX_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, IOError):
-            return
-        self.sets = [SampleSet.from_dict(d) for d in data]
-        if self.sets:
-            max_id = 0
-            for s in self.sets:
-                try:
-                    num = int(s.id.split("_")[1])
-                    if num > max_id:
-                        max_id = num
-                except (IndexError, ValueError):
-                    pass
-            self._next_id = max_id + 1
-
-    def _write_set_json(self, ss: SampleSet):
-        """Write individual set.json for a sample set."""
-        os.makedirs(ss.dir_path, exist_ok=True)
-        with open(ss.set_json_path, "w", encoding="utf-8") as f:
-            json.dump(ss.to_dict(), f, ensure_ascii=False, indent=2)
-
     def ensure_default(self) -> SampleSet:
-        """Ensure at least one sample set exists. Create '默认样本集' if empty."""
         if not self.sets:
             return self.add("默认样本集")
         return self.sets[0]
+
+    # ── 目录定位（历史代码散落在 SampleSet 属性上，现集中为方法，
+    #    供 UI 与训练数据准备共用）─────────────────────────────────────
+
+    def images_dir(self, set_id: str) -> str:
+        return os.path.join(set_root(set_id), "images")
+
+    def targets_dir(self, set_id: str) -> str:
+        return os.path.join(set_root(set_id), "targets")
+
+    def session_file(self, set_id: str) -> str:
+        return os.path.join(set_root(set_id), "session.json")
+
+    def set_json_path(self, set_id: str) -> str:
+        return os.path.join(set_root(set_id), "set.json")
+
+    # ── 持久化 ────────────────────────────────────────────────────────
+
+    def save(self) -> None:
+        json_store.write_json(paths.SETS_INDEX_FILE,
+                              [s.to_dict() for s in self.sets])
+
+    def load(self) -> None:
+        data = json_store.read_json(paths.SETS_INDEX_FILE, [])
+        if not isinstance(data, list):
+            logger.warning("sets_index.json 格式异常（应为列表），已忽略")
+            data = []
+        self.sets = [SampleSet.from_dict(d) for d in data if isinstance(d, dict)]
+        max_id = 0
+        for s in self.sets:
+            try:
+                max_id = max(max_id, int(s.id.split("_")[1]))
+            except (IndexError, ValueError):
+                pass
+        self._next_id = max_id + 1
+
+    def _write_set_json(self, ss: SampleSet) -> None:
+        os.makedirs(set_root(ss.id), exist_ok=True)
+        json_store.write_json(self.set_json_path(ss.id), ss.to_dict())

@@ -1,0 +1,24 @@
+18:18:36 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt
+18:18:36 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt
+18:18:36 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt
+18:18:36 [WARNING] core.opencv_detector: 模板加载失败: target_4, 路径: D:\jiaoben\代码审查\自动点击\data\sets\set_1\targets\target_4\templates\target_4_template.png
+18:18:36 [WARNING] core.opencv_detector: 模板加载失败: target_5, 路径: D:\jiaoben\代码审查\自动点击\data\sets\set_1\targets\target_5\templates\target_5_template.png
+18:18:36 [WARNING] core.opencv_detector: 模板加载失败: target_4, 路径: D:\jiaoben\代码审查\自动点击\data\sets\set_1\targets\target_4\templates\target_4_template.png
+18:18:36 [WARNING] core.opencv_detector: 模板加载失败: target_5, 路径: D:\jiaoben\代码审查\自动点击\data\sets\set_1\targets\target_5\templates\target_5_template.png
+18:18:36 [WARNING] core.opencv_detector: 模板加载失败: target_4, 路径: D:\jiaoben\代码审查\自动点击\data\sets\set_1\targets\target_4\templates\target_4_template.png
+18:18:36 [WARNING] core.opencv_detector: 模板加载失败: target_5, 路径: D:\jiaoben\代码审查\自动点击\data\sets\set_1\targets\target_5\templates\target_5_template.png
+18:20:02 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt
+18:20:02 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt
+18:20:02 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt
+18:20:08 [INFO] torch._subclasses.fake_tensor: FakeTensor cache stats:
+18:20:08 [INFO] torch._subclasses.fake_tensor:   cache_hits: 0
+18:20:08 [INFO] torch._subclasses.fake_tensor:   cache_misses: 0
+18:20:19 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt
+18:20:19 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt
+18:20:19 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt
+18:20:37 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt
+18:20:37 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt
+18:20:37 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt
+18:21:56 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt
+18:21:56 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt
+18:21:56 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt

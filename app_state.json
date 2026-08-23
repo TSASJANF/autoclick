@@ -9,15 +9,15 @@
   },
   "detect": {
     "confidence": 80,
-    "fps": 6,
+    "fps": 30,
     "priority_enabled": true,
     "auto_click": true,
     "floating_auto_switch": true
   },
   "annotate": {
-    "last_target_index": 0,
     "selected_set_id": "set_1",
-    "last_target_id": "target_1"
+    "last_target_id": "target_1",
+    "last_target_index": 0
   },
   "train": {
     "epochs": 150,
