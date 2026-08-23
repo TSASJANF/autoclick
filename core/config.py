@@ -10,6 +10,7 @@ from . import json_store
 from . import paths
 
 DEFAULT_CONFIG = {
+    "schema_version": 1,
     "screenshot_default_enabled": False,
     "screenshot_default_path": "data/screenshots",
     "screenshot_hide_window": True,

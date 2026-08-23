@@ -25,7 +25,7 @@ from core.image_io import imread
 from core.annotations import read_class_ids
 from core.models import SampleSet
 from core.target_manager import TargetManager
-from core.train_runner import TrainConfig
+from core.train_runner import DatasetPrep, TrainConfig
 from ui.app_context import AppContext
 from ui.workers.training_worker import TrainingWorker
 
@@ -319,36 +319,24 @@ class TrainTab(QWidget):
         class_names = [f"class_{i}" for i in range(max_cls)]
 
         images_dir, neg_ratio, min_positive = self._negative_settings()
-        try:
-            result = ds.prepare_training_dir(
-                ds_dir, class_names, images_dir=images_dir,
-                negative_ratio=neg_ratio, min_positive=min_positive)
-        except ValueError as e:
-            self.log_text.append(f"错误: {e}")
-            return
-
-        yaml_path = result["yaml_path"]
-        if result["negative_count"] > 0:
-            self.log_text.append(
-                f"[负样本] 从 {result['unlabeled_count']} 张无标注图片中随机选取 "
-                f"{result['negative_count']} 张 "
-                f"(占总训练集 {result['negative_count'] * 100 // result['total_count']}%, "
-                f"正样本 {result['positive_count']} 张)")
-        elif result["positive_count"] < min_positive:
-            self.log_text.append(
-                f"[负样本] 正样本仅 {result['positive_count']} 张，未达阈值 {min_positive}，跳过负样本")
-        self.log_text.append(f"创建 data.yaml: {yaml_path}")
-
         save_path = self.save_path_edit.text().strip()
         project_dir = save_path if save_path else os.path.join(ds_dir, "runs")
 
+        # 数据集组装（含负样本与 train/val 划分）在训练 worker 的后台
+        # 线程执行，不在 UI 线程逐张复制文件（BUG-14）
         self.train_worker = TrainingWorker(TrainConfig(
-            data_yaml=yaml_path,
+            model_base=self.model_combo.currentText(),
             epochs=self.epochs_spin.value(),
             batch_size=self.batch_spin.value(),
             img_size=self.imgsize_spin.value(),
-            model_base=self.model_combo.currentText(),
             project_dir=project_dir,
+            prep=DatasetPrep(
+                dataset_dir=ds_dir,
+                class_names=class_names,
+                images_dir=images_dir,
+                negative_ratio=neg_ratio,
+                min_positive=min_positive,
+            ),
         ))
         model_base_name = os.path.splitext(os.path.basename(self.model_combo.currentText()))[0]
         self.train_worker.progress.connect(self._on_progress)

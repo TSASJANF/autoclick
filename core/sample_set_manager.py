@@ -34,7 +34,6 @@ class SampleSetManager:
                        created_at=datetime.datetime.now().isoformat(timespec="seconds"))
         os.makedirs(self.images_dir(ss.id), exist_ok=True)
         os.makedirs(self.targets_dir(ss.id), exist_ok=True)
-        self._write_set_json(ss)
         self.sets.append(ss)
         self.save()
         return ss
@@ -55,7 +54,6 @@ class SampleSetManager:
         if ss is None:
             return
         ss.name = new_name
-        self._write_set_json(ss)
         self.save()
 
     def update_settings(self, set_id: str, negative_sample_ratio: int | None = None,
@@ -67,7 +65,6 @@ class SampleSetManager:
             ss.negative_sample_ratio = negative_sample_ratio
         if negative_min_positive is not None:
             ss.negative_min_positive = negative_min_positive
-        self._write_set_json(ss)
         self.save()
 
     # ── 查询 ──────────────────────────────────────────────────────────
@@ -95,8 +92,9 @@ class SampleSetManager:
     def session_file(self, set_id: str) -> str:
         return os.path.join(set_root(set_id), "session.json")
 
-    def set_json_path(self, set_id: str) -> str:
-        return os.path.join(set_root(set_id), "set.json")
+    def set_root(self, set_id: str) -> str:
+        """样本集根目录（绝对路径）。"""
+        return set_root(set_id)
 
     # ── 持久化 ────────────────────────────────────────────────────────
 
@@ -117,7 +115,3 @@ class SampleSetManager:
             except (IndexError, ValueError):
                 pass
         self._next_id = max_id + 1
-
-    def _write_set_json(self, ss: SampleSet) -> None:
-        os.makedirs(set_root(ss.id), exist_ok=True)
-        json_store.write_json(self.set_json_path(ss.id), ss.to_dict())

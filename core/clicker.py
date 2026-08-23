@@ -47,8 +47,8 @@ class INPUT(ctypes.Structure):
     ]
 
 
-def _virtual_screen() -> tuple[int, int, int, int]:
-    """返回 (x, y, w, h)：整个虚拟桌面的原点与尺寸。"""
+def virtual_screen_rect() -> tuple[int, int, int, int]:
+    """返回 (x, y, w, h)：整个虚拟桌面的原点与尺寸（供安全边界判定）。"""
     return (
         user32.GetSystemMetrics(SM_XVIRTUALSCREEN),
         user32.GetSystemMetrics(SM_YVIRTUALSCREEN),
@@ -59,7 +59,7 @@ def _virtual_screen() -> tuple[int, int, int, int]:
 
 def _to_absolute(x: int, y: int) -> tuple[int, int]:
     """屏幕像素坐标 -> 虚拟桌面绝对坐标 (0-65535)。"""
-    vx, vy, vw, vh = _virtual_screen()
+    vx, vy, vw, vh = virtual_screen_rect()
     abs_x = int((x - vx) * 65535 / max(vw, 1))
     abs_y = int((y - vy) * 65535 / max(vh, 1))
     return abs_x, abs_y

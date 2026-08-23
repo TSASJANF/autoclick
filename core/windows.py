@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 from ctypes import wintypes
 
 user32 = ctypes.windll.user32
@@ -11,8 +12,23 @@ user32 = ctypes.windll.user32
 _EXCLUDED_TITLES = {"Default IME", "MSCTFIME UI", ""}
 
 
-def get_foreground_hwnd() -> int:
-    return user32.GetForegroundWindow()
+def get_foreground_hwnd(own_process_only: bool = True) -> int:
+    """返回前台窗口句柄。
+
+    own_process_only=True 时只认本进程自己的窗口（BUG-10 修复）：
+    「截图时隐藏程序窗口」的语义是隐藏我们自己的窗口；旧版无差别
+    取前台窗口，用户在游戏里按 F12 时会每帧隐藏-恢复游戏窗口。
+    前台不是本进程窗口时返回 0（调用方按不隐藏处理）。
+    """
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
+        return 0
+    if own_process_only:
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value != os.getpid():
+            return 0
+    return hwnd
 
 
 def get_window_title(hwnd: int) -> str:

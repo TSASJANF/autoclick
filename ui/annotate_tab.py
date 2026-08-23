@@ -52,8 +52,6 @@ def _status_item(image_path: str, status: str) -> QListWidgetItem:
 
 
 class AnnotateTab(QWidget):
-    target_deleted = Signal()
-    target_added = Signal()
     sample_set_renamed = Signal(str)
 
     def __init__(self, ctx: AppContext, parent=None):
@@ -67,6 +65,9 @@ class AnnotateTab(QWidget):
         self._current_index = -1
         self._current_target: Target | None = None
         self._current_set: SampleSet | None = None
+        # 标注状态缓存（PERF-04）：target_id -> 非空标注主干集合，
+        # 仅在标注发生增删/目标集合变化时失效，导航切换零文件系统开销
+        self._stems_cache: dict[str, set[str]] | None = None
         self._init_ui()
         self._populate_set_combo()
         if self.set_combo.count() > 0:
@@ -287,6 +288,7 @@ class AnnotateTab(QWidget):
         if self._current_set is not None and self._current_set.id != new_set.id:
             self._save_session()
         self._current_set = new_set
+        self._invalidate_stems_cache()   # 换样本集：目标目录集合不同
         self._load_session()
         self.refresh_targets()
         self._update_info()
@@ -318,7 +320,7 @@ class AnnotateTab(QWidget):
             return
         ss = self._current_set
         targets = self.tm.get_by_set(ss.id)
-        set_root = os.path.dirname(self.ssm.set_json_path(ss.id))
+        set_root = self.ssm.set_root(ss.id)
         reply = QMessageBox.question(
             self, "确认删除",
             f"确定要删除样本集 '{ss.name}' 吗？\n\n"
@@ -342,7 +344,7 @@ class AnnotateTab(QWidget):
         self.ssm.remove(ss.id, delete_files=True)
         self._current_set = None
         self._populate_set_combo()
-        self.target_deleted.emit()
+        self.ctx.hub.targets_changed.emit()
 
     # ========== 目标管理 ==========
 
@@ -352,6 +354,7 @@ class AnnotateTab(QWidget):
         return self.tm.get_by_set(self._current_set.id)
 
     def refresh_targets(self):
+        self._invalidate_stems_cache()   # 目标集合可能变化
         self.target_table.blockSignals(True)
         self.target_table.setRowCount(0)
         if self._current_set is not None:
@@ -406,14 +409,19 @@ class AnnotateTab(QWidget):
                 item.setText(prefix + os.path.basename(self._image_list[i]))
                 item.setForeground(color)
 
+    def _get_stems_map(self) -> dict[str, set[str]]:
+        """带缓存的标注主干集合（缓存失效点：保存/重标/删图/目标变化）。"""
+        if self._stems_cache is None:
+            self._stems_cache = anno.labeled_stems_map(
+                {t.id: t.data_dir for t in self._get_set_targets()})
+        return self._stems_cache
+
+    def _invalidate_stems_cache(self):
+        self._stems_cache = None
+
     def _compute_status_map(self) -> dict[str, str]:
-        targets = self._get_set_targets()
         current_id = self._current_target.id if self._current_target else ""
-        return anno.label_status_map(
-            {t.id: t.data_dir for t in targets},
-            self._image_list,
-            current_target_id=current_id,
-        )
+        return anno.status_from_stems(self._get_stems_map(), self._image_list, current_id)
 
     def _on_target_cell_double_clicked(self, row: int, col: int):
         set_targets = self._get_set_targets()
@@ -468,12 +476,13 @@ class AnnotateTab(QWidget):
         self.tm.save()
         self.ctx.drop_model(target.id)
         self.ctx.opencv_detector.remove_template(target.id)
+        self._invalidate_stems_cache()
         self.refresh_targets()
         if self._current_target and self._current_target.id == target.id:
             self._current_target = None
             self.canvas.set_boxes([])
             self.box_list.clear()
-        self.target_deleted.emit()
+        self.ctx.hub.targets_changed.emit()
 
     def _create_new_target(self):
         if self._current_set is None:
@@ -486,8 +495,9 @@ class AnnotateTab(QWidget):
                              color=self.tm.next_color())
         os.makedirs(os.path.join(target.data_dir, "labels"), exist_ok=True)
         self.tm.save()
+        self._invalidate_stems_cache()
         self.refresh_targets()
-        self.target_added.emit()
+        self.ctx.hub.targets_changed.emit()
         idx = self._get_set_targets().index(target)
         self.target_table.setCurrentCell(idx, 0)
 
@@ -686,6 +696,7 @@ class AnnotateTab(QWidget):
             label_path = anno.label_path_for(target.data_dir, path)
             if os.path.exists(label_path):
                 os.remove(label_path)
+        self._invalidate_stems_cache()
         self._image_list.pop(row)
         self.image_list_widget.takeItem(row)
         self._adjust_after_removal(row)
@@ -755,6 +766,7 @@ class AnnotateTab(QWidget):
                     if b.owner_target_id == t.id]
         label_path = anno.label_path_for(t.data_dir, self.current_image_path)
         anno.write_labels(label_path, my_boxes, w, h)
+        self._invalidate_stems_cache()
 
         if self._current_index >= 0:
             self._refresh_image_list_status()
@@ -780,6 +792,7 @@ class AnnotateTab(QWidget):
         label_path = anno.label_path_for(t.data_dir, self.current_image_path)
         if os.path.exists(label_path):
             os.remove(label_path)
+        self._invalidate_stems_cache()
         if self._current_index >= 0:
             self._refresh_image_list_status()
             self._update_progress()

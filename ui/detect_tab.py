@@ -40,7 +40,6 @@ COL_CHECK, COL_NAME, COL_PRIORITY, COL_MODEL, COL_SET = 0, 1, 2, 3, 4
 
 
 class DetectTab(QWidget):
-    target_deleted = Signal()
     status_message = Signal(str)
     floating_window_requested = Signal(bool, bool)  # show, detecting
 
@@ -50,6 +49,8 @@ class DetectTab(QWidget):
         self.tm: TargetManager = ctx.tm
         self.detect_thread: DetectionWorker | None = None
         self._model_loader: ModelLoader | None = None
+        self._preview_enabled = True          # 悬浮窗模式下关闭预览绘制（PERF-05）
+        self._fps_warned = False
         self._init_ui()
 
     # ========== UI 构建 ==========
@@ -232,33 +233,7 @@ class DetectTab(QWidget):
     # ========== 目标表格 ==========
 
     def refresh_targets(self):
-        self.target_table.setRowCount(0)
-        for t in self.tm.targets:
-            row = self.target_table.rowCount()
-            self.target_table.insertRow(row)
-
-            cb = QCheckBox()
-            cb.setChecked(t.enabled)
-            cb.stateChanged.connect(lambda state, tid=t.id: self._on_check_changed(tid, state))
-            self.target_table.setCellWidget(row, COL_CHECK, cb)
-
-            name_item = QTableWidgetItem(t.name)
-            name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
-            name_item.setData(Qt.UserRole, t.id)
-            self.target_table.setItem(row, COL_NAME, name_item)
-
-            pri_item = QTableWidgetItem(str(t.priority))
-            pri_item.setTextAlignment(Qt.AlignCenter)
-            self.target_table.setItem(row, COL_PRIORITY, pri_item)
-
-            model_item = QTableWidgetItem(self.ctx.target_model_label(t))
-            model_item.setFlags(model_item.flags() & ~Qt.ItemIsEditable)
-            self.target_table.setItem(row, COL_MODEL, model_item)
-
-            set_item = QTableWidgetItem(self.ctx.set_display_name(t.set_id))
-            set_item.setFlags(set_item.flags() & ~Qt.ItemIsEditable)
-            self.target_table.setItem(row, COL_SET, set_item)
-
+        self._refresh_table_only()
         self._load_opencv_templates()
         self._start_model_loader()
 
@@ -360,7 +335,7 @@ class DetectTab(QWidget):
         self.ctx.drop_model(target.id)
         self.ctx.opencv_detector.remove_template(target.id)
         self.refresh_targets()
-        self.target_deleted.emit()
+        self.ctx.hub.targets_changed.emit()
 
     # ========== 模型装载 ==========
 
@@ -380,6 +355,8 @@ class DetectTab(QWidget):
             t = self.tm.get(tid)
             if t:
                 logger.info("AI 模型已加载: %s", t.name)
+        # 表格「模型」列从「未加载」更新为实际标签
+        self._refresh_table_only()
 
     def _on_models_failed(self, errors: list):
         self.ctx.apply_failed_models(errors)
@@ -387,6 +364,38 @@ class DetectTab(QWidget):
             t = self.tm.get(target_id)
             name = t.name if t else target_id
             self.status_message.emit(f"模型加载失败 [{name}]: {err}")
+        self._refresh_table_only()
+
+    def _refresh_table_only(self):
+        """只重建目标表格（不触发模板/模型加载）。"""
+        self.target_table.blockSignals(True)
+        try:
+            selected = {row: (self.target_table.cellWidget(row, COL_CHECK).isChecked()
+                              if self.target_table.cellWidget(row, COL_CHECK) else False)
+                        for row in range(self.target_table.rowCount())}
+            self.target_table.setRowCount(0)
+            for i, t in enumerate(self.tm.targets):
+                row = self.target_table.rowCount()
+                self.target_table.insertRow(row)
+                cb = QCheckBox()
+                cb.setChecked(selected.get(i, t.enabled))
+                cb.stateChanged.connect(lambda state, tid=t.id: self._on_check_changed(tid, state))
+                self.target_table.setCellWidget(row, COL_CHECK, cb)
+                name_item = QTableWidgetItem(t.name)
+                name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
+                name_item.setData(Qt.UserRole, t.id)
+                self.target_table.setItem(row, COL_NAME, name_item)
+                pri_item = QTableWidgetItem(str(t.priority))
+                pri_item.setTextAlignment(Qt.AlignCenter)
+                self.target_table.setItem(row, COL_PRIORITY, pri_item)
+                model_item = QTableWidgetItem(self.ctx.target_model_label(t))
+                model_item.setFlags(model_item.flags() & ~Qt.ItemIsEditable)
+                self.target_table.setItem(row, COL_MODEL, model_item)
+                set_item = QTableWidgetItem(self.ctx.set_display_name(t.set_id))
+                set_item.setFlags(set_item.flags() & ~Qt.ItemIsEditable)
+                self.target_table.setItem(row, COL_SET, set_item)
+        finally:
+            self.target_table.blockSignals(False)
 
     def _load_opencv_templates(self):
         detector = self.ctx.opencv_detector
@@ -395,6 +404,7 @@ class DetectTab(QWidget):
                 path = os.path.abspath(t.template_path)
                 if not os.path.exists(path):
                     logger.warning("模板文件不存在: %s", path)
+                    self.status_message.emit(f"模板文件不存在 [{t.name}]: {path}")
                     continue
                 if detector.has_template(t.id):
                     detector.thresholds[t.id] = t.match_threshold
@@ -450,7 +460,9 @@ class DetectTab(QWidget):
         self.detect_thread = DetectionWorker(engine)
         self.detect_thread.frame_ready.connect(self._on_frame)
         self.detect_thread.fps_update.connect(self._on_fps)
+        self.detect_thread.error.connect(self._on_detection_error)
         self.detect_thread.start()
+        self._fps_warned = False
 
         self.start_btn.setText("停止检测")
         self.start_btn.setObjectName("danger_btn")
@@ -461,8 +473,10 @@ class DetectTab(QWidget):
 
     def _stop_detection(self):
         if self.detect_thread:
-            self.detect_thread.stop()
-            self.detect_thread = None
+            worker, self.detect_thread = self.detect_thread, None
+            if not worker.stop(timeout_ms=2000):
+                # 不阻塞 UI 等待长帧；线程完成当前帧后会自行退出（BUG-08）
+                self.status_message.emit("正在等待当前检测帧完成…")
         self.start_btn.setText("开始检测")
         self.start_btn.setObjectName("success_btn")
         self.start_btn.style().unpolish(self.start_btn)
@@ -470,12 +484,29 @@ class DetectTab(QWidget):
         if self.floating_auto_switch_cb.isChecked():
             self.floating_window_requested.emit(False, False)
 
-    def stop_if_running(self) -> bool:
-        """若检测正在运行则停止，返回之前是否在运行。"""
-        was_running = bool(self.detect_thread and self.detect_thread.running)
-        if was_running:
-            self._stop_detection()
+    def stop_if_running(self, timeout_ms: int = 8000) -> bool:
+        """若检测正在运行则停止（退出程序时给更长的收尾超时）。"""
+        was_running = self.is_detecting
+        if was_running and self.detect_thread is not None:
+            worker = self.detect_thread
+            self.detect_thread = None
+            worker.stop(timeout_ms=timeout_ms)
         return was_running
+
+    @Slot(str)
+    def _on_detection_error(self, message: str):
+        """检测线程连续失败自动停止后复位 UI（BUG-02）。"""
+        self.detect_thread = None
+        self.start_btn.setText("开始检测")
+        self.start_btn.setObjectName("success_btn")
+        self.start_btn.style().unpolish(self.start_btn)
+        self.start_btn.style().polish(self.start_btn)
+        self.status_message.emit(message)
+        QMessageBox.warning(self, "检测已停止", message)
+
+    def set_preview_enabled(self, enabled: bool):
+        """悬浮窗模式下关闭预览绘制，避免主线程每帧缩放开销（PERF-05）。"""
+        self._preview_enabled = enabled
 
     @property
     def is_detecting(self) -> bool:
@@ -485,18 +516,19 @@ class DetectTab(QWidget):
 
     @Slot(np.ndarray, list)
     def _on_frame(self, img: np.ndarray, detections: list):
-        for det in detections:
-            b, g, r = bgr_color(det.color)
-            cv2.rectangle(img, (det.x1, det.y1), (det.x2, det.y2), (b, g, r), 2)
-            label = f"{det.target_name}[{det.source}] {det.conf:.2f}"
-            cv2.putText(img, label, (det.x1, det.y1 - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (b, g, r), 1)
+        if self._preview_enabled:
+            for det in detections:
+                b, g, r = bgr_color(det.color)
+                cv2.rectangle(img, (det.x1, det.y1), (det.x2, det.y2), (b, g, r), 2)
+                label = f"{det.target_name}[{det.source}] {det.conf:.2f}"
+                cv2.putText(img, label, (det.x1, det.y1 - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (b, g, r), 1)
 
-        qt_img = bgr_to_qimage(img)
-        pixmap = QPixmap.fromImage(qt_img)
-        scaled = pixmap.scaled(self.preview_label.size(), Qt.KeepAspectRatio,
-                               Qt.SmoothTransformation)
-        self.preview_label.setPixmap(scaled)
+            qt_img = bgr_to_qimage(img)
+            pixmap = QPixmap.fromImage(qt_img)
+            scaled = pixmap.scaled(self.preview_label.size(), Qt.KeepAspectRatio,
+                                   Qt.SmoothTransformation)
+            self.preview_label.setPixmap(scaled)
 
         self.result_table.setRowCount(len(detections))
         for i, det in enumerate(detections):
@@ -509,6 +541,19 @@ class DetectTab(QWidget):
     @Slot(float)
     def _on_fps(self, fps: float):
         self.fps_label.setText(f"FPS: {fps:.1f}")
+        # 实测帧率显著低于目标时给出一次性提示（CPU 推理跟不上目标帧率）
+        if not self._fps_warned and self.detect_thread is not None:
+            target = self.detect_thread.engine.config.target_fps
+            if fps < target * 0.7:
+                self._fps_warned = True
+                self.fps_label.setStyleSheet("color: #f59e0b; font-size: 12px;")
+                self.status_message.emit(
+                    f"实测帧率 ({fps:.1f}) 低于目标 ({target})，"
+                    f"可降低帧率/换更小模型/减少同时检测的目标数")
+        elif self._fps_warned and self.detect_thread is not None \
+                and fps >= self.detect_thread.engine.config.target_fps * 0.7:
+            self._fps_warned = False
+            self.fps_label.setStyleSheet("color: #8888a8; font-size: 12px;")
 
     # ========== 其他动作 ==========
 

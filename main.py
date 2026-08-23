@@ -1,12 +1,13 @@
-"""应用入口：日志初始化、全局样式、QApplication 启动。
+"""应用入口：日志初始化、单实例锁、全局样式、QApplication 启动。
 
 相对历史版本的改动：
-1. 配置 logging（控制台 + logs/app.log 轮转文件）——旧版全是 print，
-   排障只能盯控制台；
-2. 加载 ui/style.qss —— 该 633 行设计系统文件一直存在却从未被任何
-   代码引用（primary_btn/success_btn/danger_btn 等 objectName 选择器
-   全部失效），现在真正接上；
-3. 捕获顶层异常写入日志，而不是让 Qt 静默吞掉。
+1. logging（控制台 + logs/app.log 轮转 + Qt 消息路由）——旧版全是
+   print，GUI 进程无控制台时所有可诊断信息实际全部丢失；
+2. 单实例锁（SEC-02）：双开进程会相互覆盖 targets.json/sets_index.json
+   （后写者抹掉先写者的全部变更），现以 QLocalServer 拒绝第二实例；
+3. 加载 ui/style.qss —— 该 633 行设计系统文件一直存在却从未被任何
+   代码引用，现在真正接上；
+4. 启动时清理过期截图（SEC-03）。
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ import sys
 from pathlib import Path
 
 from core.paths import APP_ROOT
+
+_SINGLE_INSTANCE_KEY = "auto-clicker-single-instance"
 
 
 def setup_logging() -> None:
@@ -42,6 +45,35 @@ def setup_logging() -> None:
     logging.getLogger("ultralytics").setLevel(logging.WARNING)
     logging.getLogger("PIL").setLevel(logging.WARNING)
 
+    # Qt 内部警告（qpainter/qimage 等）路由到日志，GUI 下不再丢失
+    from PySide6.QtCore import QtMsgType, qInstallMessageHandler
+
+    def qt_message_handler(mode, _context, message):
+        qt_logger = logging.getLogger("qt")
+        if mode == QtMsgType.QtWarningMsg:
+            qt_logger.warning(message)
+        elif mode == QtMsgType.QtCriticalMsg or mode == QtMsgType.QtFatalMsg:
+            qt_logger.critical(message)
+        else:
+            qt_logger.info(message)
+
+    qInstallMessageHandler(qt_message_handler)
+
+
+def acquire_single_instance_lock(app):
+    """单实例锁（SEC-02）。成功返回持有的 QLocalServer，已有实例返回 None。"""
+    from PySide6.QtNetwork import QLocalServer, QLocalSocket
+
+    probe = QLocalSocket()
+    probe.connectToServer(_SINGLE_INSTANCE_KEY)
+    if probe.waitForConnected(200):
+        probe.disconnectFromServer()
+        return None   # 已有实例在运行
+    QLocalServer.removeServer(_SINGLE_INSTANCE_KEY)   # 清理崩溃残留
+    server = QLocalServer()
+    server.listen(_SINGLE_INSTANCE_KEY)
+    return server
+
 
 def load_stylesheet(app) -> None:
     qss_path = Path(__file__).parent / "ui" / "style.qss"
@@ -53,10 +85,24 @@ def main() -> int:
     setup_logging()
     logger = logging.getLogger("main")
 
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QMessageBox
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+
+    lock = acquire_single_instance_lock(app)
+    if lock is None:
+        QMessageBox.warning(None, "程序已在运行",
+                            "自动点击工具已在运行中。\n双开会相互覆盖配置并导致数据丢失。")
+        return 0
+
     load_stylesheet(app)
+
+    # 启动清理：过期截图（SEC-03）
+    from core.data_lifecycle import cleanup_screenshots
+    try:
+        cleanup_screenshots()
+    except Exception:
+        logger.exception("截图清理失败（不影响启动）")
 
     from ui.main_window import MainWindow
     window = MainWindow()
@@ -67,9 +113,6 @@ def main() -> int:
     except Exception:
         logger.exception("应用发生未捕获异常")
         raise
-    finally:
-        # 状态由 MainWindow.closeEvent 保存
-        sys.stdout.flush()
 
 
 if __name__ == "__main__":

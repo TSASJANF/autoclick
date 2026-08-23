@@ -88,11 +88,13 @@ class MainWindow(QMainWindow):
         # 信号连接
         self.train_tab.training_complete.connect(self._on_training_complete)
         self.settings_tab.config_changed.connect(self._on_config_changed)
-        self.annotate_tab.target_deleted.connect(self._refresh_all)
-        self.annotate_tab.target_added.connect(self._refresh_all)
+        # 目标变更统一走 hub 广播（ARCH-02：新增页签修改目标后无需在此补连）
+        self.ctx.hub.targets_changed.connect(self._refresh_all)
         self.annotate_tab.sample_set_renamed.connect(self._on_sample_set_renamed)
-        self.detect_tab.target_deleted.connect(self._refresh_all)
         self.detect_tab.status_message.connect(self.status.showMessage)
+
+        # 启动自检（BIZ-05）：失效路径/损坏备份汇总提示
+        self._run_startup_health_check()
 
         # 全局热键
         self._hotkey_bridge = HotkeyBridge(self)
@@ -156,6 +158,16 @@ class MainWindow(QMainWindow):
         if not tm.targets:
             QMessageBox.information(self, "提示", "请先添加目标")
             return
+        # SEC-01：.pt 是 pickle 序列化格式，加载即执行其中代码。
+        # 从他人处获取的模型等同于运行未知程序，必须明示风险。
+        reply = QMessageBox.warning(
+            self, "安全提示",
+            "模型文件 (.pt) 加载时会执行其中嵌入的代码。\n"
+            "仅导入来源可信的模型（自己训练或完全信任的提供者），\n"
+            "从网络/群组下载的模型可能包含恶意代码。\n\n是否继续？",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return
         path, _ = QFileDialog.getOpenFileName(self, "选择模型文件", "", "模型文件 (*.pt *.onnx)")
         if not path:
             return
@@ -170,6 +182,11 @@ class MainWindow(QMainWindow):
             tm.save()
             self._refresh_all()
             self.status.showMessage(f"已将模型导入到目标 '{target.name}': {path}")
+
+    def _run_startup_health_check(self):
+        issues = self.ctx.startup_health_check()
+        if issues:
+            self.status.showMessage(f"启动自检: 发现 {len(issues)} 项异常（详见日志）", 8000)
 
     def _refresh_all(self):
         self.annotate_tab.refresh_targets()
@@ -203,6 +220,8 @@ class MainWindow(QMainWindow):
 
     def _toggle_floating_window(self, show: bool, detecting: bool):
         if show:
+            # 悬浮窗模式：主窗口已最小化，断开预览绘制节省主线程开销
+            self.detect_tab.set_preview_enabled(False)
             self.floating_window.sync_from_detect_tab(self.detect_tab)
             self.floating_window.set_detecting(detecting)
             fw_state = self.ctx.state.get("floating_window", {})
@@ -245,6 +264,7 @@ class MainWindow(QMainWindow):
         self.ctx.state["floating_window"]["x"] = pos.x()
         self.ctx.state["floating_window"]["y"] = pos.y()
         self.floating_window.hide()
+        self.detect_tab.set_preview_enabled(True)
         self.showNormal()
         self.activateWindow()
 
@@ -349,10 +369,20 @@ class MainWindow(QMainWindow):
         self.ctx.save_app_state()
 
     def closeEvent(self, event):
+        # 退出收尾（BUG-01）：检测与训练线程都必须显式停止，
+        # 否则退出瞬间检测线程仍在 SendInput 点击屏幕（幽灵点击），
+        # 或 QThread 在析构阶段被强杀导致崩溃
         try:
-            self.detect_tab.stop_if_running()
+            self.detect_tab.stop_if_running(timeout_ms=8000)
         except Exception:
             logger.exception("停止检测线程失败")
+        try:
+            if self.train_tab.train_worker is not None and self.train_tab.train_worker.isRunning():
+                logger.info("退出前等待训练线程协作停止…")
+                self.train_tab.train_worker.request_stop()
+                self.train_tab.train_worker.wait(15000)
+        except Exception:
+            logger.exception("停止训练线程失败")
         try:
             self._hotkey_bridge.unregister()
         except Exception:

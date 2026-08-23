@@ -1,14 +1,17 @@
 """训练数据集准备：定位已标注图片、组装 train_data 目录、生成 data.yaml。
 
-从旧 core/trainer.py 的静态方法迁移，修复两个数据正确性缺陷：
+从旧 core/trainer.py 的静态方法迁移，修复的正确性缺陷：
 
-1. 临时目录残留污染（严重）：旧版只在链接/拷贝前检查「文件不存在才创
-   建」，但 train_data 从不清理。上一次训练随机抽的负样本空标签文件
-   会残留到下一次训练，而负样本每次重新随机抽取 —— 结果旧负样本（可
-   能已不适用）永远混入训练集。现改为每次重建前清空 train_data；
+1. 临时目录残留污染：每次重建前清空 train_data（旧版增量复用，上次
+   训练的负样本空标签会永久混入后续训练）；
 
-2. Windows 无特权时 os.symlink 必然失败，注释声称的符号链接方案名不
-   副实，且残留判定掩盖了内容变化。统一改为复制语义，行为可预期。
+2. train = val 同目录（BIZ-01）：验证集等于训练集，mAP 虚高、best.pt
+   的早停失去意义。现按 80/20 划分 train/val（确定性随机，种子固定）；
+
+3. Windows 无符号链接权限时 os.symlink 必然失败、退化为整库复制
+   （PERF-03）：改用硬链接（同卷 os.link 无需特权），失败再复制。
+
+负样本抽样与划分共用一个可配置种子（默认固定），训练可复现（BIZ-03）。
 """
 
 from __future__ import annotations
@@ -23,6 +26,9 @@ from . import paths
 logger = logging.getLogger(__name__)
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+
+# 固定默认种子：保证同一份数据两次训练的负样本抽取与划分一致（可复现）
+DEFAULT_SEED = 42
 
 
 def list_images(directory: str) -> list[str]:
@@ -78,16 +84,39 @@ def count_negative_candidates(positive_count: int, unlabeled_count: int,
     return min(target, unlabeled_count)
 
 
+def _place_file(src: str, dst: str) -> None:
+    """把文件放入训练目录：硬链接优先（同卷、零拷贝、无需特权），
+    失败回退复制（跨卷等情况）。"""
+    try:
+        os.link(src, dst)
+        return
+    except OSError:
+        pass
+    shutil.copy2(src, dst)
+
+
+def _val_count(total: int, val_ratio: float) -> int:
+    """验证集数量：>=5 时按比例（至少 1 张）；2-4 张时 1 张；
+    单张时 0（该图同时进 train/val，行为与旧版一致且明确记录）。"""
+    if total >= 5:
+        return max(1, round(total * val_ratio))
+    if total >= 2:
+        return 1
+    return 0
+
+
 def prepare_training_dir(dataset_dir: str, class_names: list[str], images_dir: str,
                          negative_ratio: int = 0, min_positive: int = 5,
-                         seed: int | None = None) -> dict:
-    """组装训练目录（images/ + labels/ + data.yaml），返回统计信息。
+                         seed: int = DEFAULT_SEED,
+                         val_ratio: float = 0.2) -> dict:
+    """组装训练目录（train/val 划分 + data.yaml），返回统计信息。
 
     dataset_dir: 含 labels/ 的目标数据目录
     images_dir:  样本集图片目录
     negative_ratio: 负样本占训练集百分比（0 = 关闭）
     min_positive: 启用负样本所需最小正样本数
-    seed: 负样本随机抽样种子（None = 随机）
+    seed: 负样本抽样与 train/val 划分共用的随机种子
+    val_ratio: 验证集占比
     """
     abs_images_dir = paths.resolve(images_dir)
     abs_dataset_dir = paths.resolve(dataset_dir)
@@ -107,47 +136,73 @@ def prepare_training_dir(dataset_dir: str, class_names: list[str], images_dir: s
     rng = random.Random(seed)
     negative_files = rng.sample(unlabeled, negative_count) if negative_count else []
 
-    # 每次重建前清空临时目录，杜绝上次训练的负样本残留（见模块 docstring）
+    # 每次重建前清空临时目录，杜绝上次训练的负样本残留
     train_dir = os.path.join(abs_dataset_dir, "train_data")
     if os.path.exists(train_dir):
         shutil.rmtree(train_dir, ignore_errors=True)
-    train_images = os.path.join(train_dir, "images")
-    train_labels = os.path.join(train_dir, "labels")
-    os.makedirs(train_images)
-    os.makedirs(train_labels)
 
-    for img_file in labeled_files:
-        stem = os.path.splitext(img_file)[0]
-        shutil.copy2(os.path.join(abs_images_dir, img_file),
-                     os.path.join(train_images, img_file))
-        src_label = os.path.join(abs_dataset_dir, "labels", stem + ".txt")
-        if os.path.exists(src_label):
-            shutil.copy2(src_label, os.path.join(train_labels, stem + ".txt"))
+    # (图片文件, 标签源路径或None) 的全集，再做确定性 train/val 划分
+    samples: list[tuple[str, str | None]] = [
+        (f, os.path.join(abs_dataset_dir, "labels",
+                         os.path.splitext(f)[0] + ".txt"))
+        for f in labeled_files
+    ] + [(f, None) for f in negative_files]
 
-    for img_file in negative_files:
+    total = len(samples)
+    n_val = _val_count(total, val_ratio)
+    order = list(range(total))
+    rng.shuffle(order)
+    val_idx = set(order[:n_val])
+
+    split_dirs = {}
+    for split in ("train", "val"):
+        split_dirs[split] = (
+            os.path.join(train_dir, "images", split),
+            os.path.join(train_dir, "labels", split),
+        )
+        os.makedirs(split_dirs[split][0])
+        os.makedirs(split_dirs[split][1])
+
+    single_sample = total == 1
+    for i, (img_file, label_src) in enumerate(samples):
         stem = os.path.splitext(img_file)[0]
-        shutil.copy2(os.path.join(abs_images_dir, img_file),
-                     os.path.join(train_images, img_file))
-        # 负样本：空标注文件 = 图中无目标
-        open(os.path.join(train_labels, stem + ".txt"), "w").close()
+        # 单样本场景：同一文件进 train 和 val（链接两次，无拷贝开销）
+        targets = ("train", "val") if single_sample else \
+            (("val",) if i in val_idx else ("train",))
+        for split in targets:
+            images_dst, labels_dst = split_dirs[split]
+            _place_file(os.path.join(abs_images_dir, img_file),
+                        os.path.join(images_dst, img_file))
+            label_dst = os.path.join(labels_dst, stem + ".txt")
+            if label_src and os.path.exists(label_src):
+                _place_file(label_src, label_dst)
+            elif not os.path.exists(label_dst):
+                open(label_dst, "w").close()   # 负样本：空标注
+
+    train_count = total - (0 if single_sample else n_val)
+    val_count = 1 if single_sample else n_val
+    logger.info("训练目录已就绪: %s (正 %d / 负 %d / train %d / val %d)",
+                train_dir, positive_count, len(negative_files),
+                train_count, val_count)
 
     yaml_content = (f"path: {train_dir}\n"
-                    f"train: images\n"
-                    f"val: images\n\n"
+                    f"train: images/train\n"
+                    f"val: images/val\n\n"
                     f"nc: {len(class_names)}\n"
                     f"names: {class_names}\n")
     yaml_path = os.path.join(train_dir, "data.yaml")
     with open(yaml_path, "w", encoding="utf-8") as f:
         f.write(yaml_content)
 
-    logger.info("训练目录已就绪: %s (正 %d / 负 %d)",
-                train_dir, positive_count, len(negative_files))
     return {
         "yaml_path": yaml_path,
         "positive_count": positive_count,
         "negative_count": len(negative_files),
-        "total_count": positive_count + len(negative_files),
+        "total_count": total,
         "unlabeled_count": len(unlabeled),
+        "train_count": train_count,
+        "val_count": val_count,
+        "seed": seed,
     }
 
 

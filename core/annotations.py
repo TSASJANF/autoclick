@@ -94,36 +94,51 @@ def has_label(label_path: str) -> bool:
     return os.path.exists(label_path) and os.path.getsize(label_path) > 0
 
 
-def label_status_map(target_data_dirs: dict[str, str],
-                     image_paths: Iterable[str],
-                     current_target_id: str = "") -> dict[str, str]:
-    """批量计算标注状态，避免逐图逐目标 stat 的 N×M 次文件系统调用。
+def labeled_stems_map(target_data_dirs: dict[str, str]) -> dict[str, set[str]]:
+    """扫描各目标 labels 目录，返回 target_id -> 非空标注的文件名主干集合。
 
-    target_data_dirs: target_id -> data_dir
-    返回 image_path -> "selected" | "other" | "none"
+    与整个图片列表无关，可被 UI 缓存（PERF-04）；仅在标注发生增删时
+    需要失效重算。每个目标一次 scandir，取代旧版每图×每目标逐个 stat。
     """
-    # 一次性列出每个目标 labels 目录内非空标注的文件名主干
-    labeled_stems: dict[str, set[str]] = {}
+    stems_map: dict[str, set[str]] = {}
     for tid, data_dir in target_data_dirs.items():
         labels_dir = os.path.join(paths.resolve(data_dir), "labels")
-        stems = set()
+        stems: set[str] = set()
         if os.path.isdir(labels_dir):
             with os.scandir(labels_dir) as it:
                 for entry in it:
-                    if entry.name.endswith(".txt") and entry.stat().st_size > 0:
-                        stems.add(os.path.splitext(entry.name)[0])
-        labeled_stems[tid] = stems
+                    if entry.name.endswith(".txt"):
+                        try:
+                            if entry.stat().st_size > 0:
+                                stems.add(os.path.splitext(entry.name)[0])
+                        except OSError:
+                            continue
+        stems_map[tid] = stems
+    return stems_map
 
+
+def status_from_stems(stems_map: dict[str, set[str]],
+                      image_paths: Iterable[str],
+                      current_target_id: str = "") -> dict[str, str]:
+    """由缓存的 stems 集合计算每张图的状态（纯函数，无文件系统访问）。"""
     status: dict[str, str] = {}
     for image_path in image_paths:
         stem = os.path.splitext(os.path.basename(image_path))[0]
         result = "none"
-        for tid, stems in labeled_stems.items():
+        for tid, stems in stems_map.items():
             if stem in stems:
                 result = "selected" if tid == current_target_id else "other"
                 break
         status[image_path] = result
     return status
+
+
+def label_status_map(target_data_dirs: dict[str, str],
+                     image_paths: Iterable[str],
+                     current_target_id: str = "") -> dict[str, str]:
+    """批量计算标注状态（labeled_stems_map + status_from_stems 的组合）。"""
+    return status_from_stems(
+        labeled_stems_map(target_data_dirs), image_paths, current_target_id)
 
 
 def read_class_ids(labels_dir: str) -> set[int]:

@@ -177,13 +177,17 @@ class SettingsTab(QWidget):
 
     def _save(self):
         cfg = dict(self.config)
+        # QKeySequenceEdit 可录入多段序列（如 "F9, F10"），只取第一段，
+        # 避免解析失败导致热键静默失效（BUG-18）
+        seq = self.hotkey_toggle_detection.keySequence()
+        hotkey = seq[0].toString() if seq.count() > 0 else ""
         cfg.update({
             "screenshot_default_enabled": self.default_path_cb.isChecked(),
             "screenshot_default_path": self.path_edit.text(),
             "screenshot_hide_window": self.hide_window_cb.isChecked(),
             "window_capture_enabled": self.window_capture_cb.isChecked(),
             "window_capture_title": self.window_combo.currentText(),
-            "hotkey_toggle_detection": self.hotkey_toggle_detection.keySequence().toString(),
+            "hotkey_toggle_detection": hotkey,
             "negative_sample_ratio": self.negative_ratio_slider.value(),
             "negative_min_positive": self.negative_min_spin.value(),
         })

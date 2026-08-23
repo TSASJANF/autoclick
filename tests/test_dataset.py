@@ -56,15 +56,29 @@ class TestPrepareTrainingDir:
             ds_dir, ["class_0"], images_dir,
             negative_ratio=25, min_positive=1, seed=42)
 
+        train_root = os.path.join(ds_dir, "train_data")
         assert result["positive_count"] == 2
-        assert result["total_count"] == len(os.listdir(
-            os.path.join(ds_dir, "train_data", "images")))
+        assert result["total_count"] == 3
+        assert result["train_count"] + result["val_count"] == 3
+        assert result["val_count"] == 1   # 3 张图 >= 2 → 1 张验证
+        assert os.path.exists(os.path.join(train_root, "images", "train"))
+        assert os.path.exists(os.path.join(train_root, "images", "val"))
+        assert os.path.exists(os.path.join(train_root, "labels", "train"))
+        assert os.path.exists(os.path.join(train_root, "labels", "val"))
         assert os.path.exists(result["yaml_path"])
+        # yaml 必须指向不同目录（train ≠ val，BIZ-01）
+        with open(result["yaml_path"], encoding="utf-8") as f:
+            yaml_text = f.read()
+        assert "train: images/train" in yaml_text
+        assert "val: images/val" in yaml_text
         # 负样本必须有空标注文件
-        negative_labels = [f for f in os.listdir(
-            os.path.join(ds_dir, "train_data", "labels"))
-            if os.path.getsize(os.path.join(ds_dir, "train_data", "labels", f)) == 0]
-        assert len(negative_labels) == result["negative_count"]
+        empty_labels = []
+        for split in ("train", "val"):
+            label_dir = os.path.join(ds_dir, "train_data", "labels", split)
+            for f in os.listdir(label_dir):
+                if os.path.getsize(os.path.join(label_dir, f)) == 0:
+                    empty_labels.append(f)
+        assert len(empty_labels) == result["negative_count"]
 
     def test_no_labeled_raises(self, tmp_path):
         images_dir, ds_dir = _make_set(tmp_path, ["a.png"], labeled=[])
@@ -76,25 +90,42 @@ class TestPrepareTrainingDir:
         images_dir, ds_dir = _make_set(
             tmp_path, ["a.png", "b.png", "c.png"], labeled=["a", "b"])
 
-        first = ds.prepare_training_dir(ds_dir, ["class_0"], images_dir, seed=1)
+        ds.prepare_training_dir(ds_dir, ["class_0"], images_dir, seed=1)
         # 模拟训练中断：train_data 残留
-        assert os.path.exists(first["yaml_path"])
 
         second = ds.prepare_training_dir(
             ds_dir, ["class_0"], images_dir, negative_ratio=0, seed=2)
-        labels_after = os.listdir(os.path.join(ds_dir, "train_data", "labels"))
-        # 本次未启用负样本，不允许残留上次的空标签
-        assert all(os.path.getsize(os.path.join(ds_dir, "train_data", "labels", f)) > 0
-                   for f in labels_after)
+        for split in ("train", "val"):
+            labels = os.listdir(os.path.join(ds_dir, "train_data", "labels", split))
+            for f in labels:
+                assert os.path.getsize(os.path.join(
+                    ds_dir, "train_data", "labels", split, f)) > 0, \
+                    "本次未启用负样本，不允许残留上次的空标签"
 
     def test_seed_reproducibility(self, tmp_path):
+        """同一 seed 两次组装：负样本与划分完全一致（BIZ-03）。"""
         images_dir, ds_dir = _make_set(
             tmp_path, [f"i{i}.png" for i in range(20)], labeled=["i0", "i1"])
-        r1 = ds.prepare_training_dir(ds_dir, ["c"], images_dir, 25, 1, seed=7)
-        r2 = ds.prepare_training_dir(ds_dir, ["c"], images_dir, 25, 1, seed=7)
-        assert sorted(os.listdir(os.path.join(ds_dir, "train_data", "images"))) == \
-            sorted(os.listdir(os.path.join(ds_dir, "train_data", "images")))
+
+        def snapshot():
+            r = ds.prepare_training_dir(ds_dir, ["c"], images_dir,
+                                        25, 1, seed=7)
+            files = {s: sorted(os.listdir(os.path.join(
+                ds_dir, "train_data", "images", s))) for s in ("train", "val")}
+            return r, files
+
+        r1, f1 = snapshot()
+        r2, f2 = snapshot()
         assert r1["negative_count"] == r2["negative_count"]
+        assert f1 == f2, "固定种子下两次组装的结果必须一致"
+
+    def test_single_sample_goes_to_both_splits(self, tmp_path):
+        """单样本场景：同一图进 train 和 val（行为明确，与旧版一致）。"""
+        images_dir, ds_dir = _make_set(tmp_path, ["only.png"], labeled=["only"])
+        result = ds.prepare_training_dir(ds_dir, ["c"], images_dir)
+        assert result["train_count"] == 1 and result["val_count"] == 1
+        assert os.path.exists(os.path.join(ds_dir, "train_data", "images", "train", "only.png"))
+        assert os.path.exists(os.path.join(ds_dir, "train_data", "images", "val", "only.png"))
 
 
 class TestSuggestHyperparams:

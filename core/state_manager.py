@@ -10,6 +10,7 @@ from . import json_store
 from . import paths
 
 DEFAULT_STATE = {
+    "schema_version": 1,
     "window": {
         "x": None,
         "y": None,
