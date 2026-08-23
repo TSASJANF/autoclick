@@ -177,7 +177,7 @@ class AnnotateTab(QWidget):
         self.target_table.horizontalHeader().setStretchLastSection(True)
         self.target_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.target_table.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.target_table.setMaximumHeight(180)
+        self.target_table.setMaximumHeight(220)
         self.target_table.currentCellChanged.connect(self._on_target_row_changed)
         self.target_table.cellDoubleClicked.connect(self._on_target_cell_double_clicked)
         self.target_table.setContextMenuPolicy(Qt.CustomContextMenu)

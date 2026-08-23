@@ -14,3 +14,6 @@ runs/
 # IDE / tooling
 .codegraph/
 .claude/
+
+# Runtime artifacts
+logs/

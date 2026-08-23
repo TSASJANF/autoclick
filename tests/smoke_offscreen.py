@@ -13,7 +13,8 @@ def main() -> int:
     import main as app_main
     app_main.setup_logging()
     app = QApplication(sys.argv)
-    app_main.load_stylesheet(app)
+    from ui.theme import apply_theme
+    apply_theme(app)
 
     from ui.main_window import MainWindow
     w = MainWindow()

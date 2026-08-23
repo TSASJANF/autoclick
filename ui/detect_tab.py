@@ -21,8 +21,9 @@ from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QFrame, QGroupBox, QHBoxLayout,
-    QInputDialog, QLabel, QMessageBox, QPushButton, QMenu, QSlider,
-    QSplitter, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QHeaderView, QInputDialog, QLabel, QMessageBox, QPushButton, QMenu,
+    QSlider, QSplitter, QSpinBox, QTableWidget, QTableWidgetItem,
+    QVBoxLayout, QWidget,
 )
 
 from core.capture import ScreenCapture
@@ -95,12 +96,9 @@ class DetectTab(QWidget):
 
         self.target_table = QTableWidget(0, 5)
         self.target_table.setHorizontalHeaderLabels(["", "名称", "优先级", "模型", "样本集"])
-        self.target_table.setColumnWidth(COL_CHECK, 30)
-        self.target_table.setColumnWidth(COL_NAME, 120)
-        self.target_table.setColumnWidth(COL_PRIORITY, 60)
-        self.target_table.setColumnWidth(COL_MODEL, 80)
-        self.target_table.setColumnWidth(COL_SET, 100)
-        self.target_table.horizontalHeader().setStretchLastSection(True)
+        header = self.target_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setStretchLastSection(True)
         self.target_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.target_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.target_table.cellDoubleClicked.connect(self._on_target_cell_double_clicked)
@@ -166,19 +164,15 @@ class DetectTab(QWidget):
         self.auto_click_cb = QCheckBox("自动点击")
         settings_layout.addWidget(self.auto_click_cb)
 
-        multi_click_frame = QFrame()
-        multi_click_layout = QHBoxLayout(multi_click_frame)
-        multi_click_layout.setContentsMargins(0, 0, 0, 0)
-
-        multi_click_label = QLabel("多目标同优先级点击:")
-        multi_click_label.setStyleSheet("color: #8888a8;")
-        multi_click_layout.addWidget(multi_click_label)
+        self.multi_click_label = QLabel("多目标同优先级点击:")
+        self.multi_click_label.setStyleSheet("color: #8888a8;")
+        settings_layout.addWidget(self.multi_click_label)
 
         self.multi_click_combo = QComboBox()
         self.multi_click_combo.addItems(["只点击一个", "点击所有实例"])
         self.multi_click_combo.setToolTip("当多个相同优先级的目标被检测到时的点击策略")
-        multi_click_layout.addWidget(self.multi_click_combo)
-        settings_layout.addWidget(multi_click_frame)
+        self.multi_click_combo.setMinimumWidth(160)
+        settings_layout.addWidget(self.multi_click_combo)
 
         self.floating_auto_switch_cb = QCheckBox("开始检测时自动切换到悬浮窗")
         self.floating_auto_switch_cb.setToolTip("勾选后点击开始检测会自动进入悬浮窗模式")
@@ -186,7 +180,7 @@ class DetectTab(QWidget):
 
         right_splitter.addWidget(settings_group)
 
-        # 控制按钮 + 结果表
+        # 控制按钮 + 结果表（两行按钮，避免右栏过窄时挤压截断）
         btn_group = QWidget()
         btn_layout = QVBoxLayout(btn_group)
         btn_layout.setSpacing(8)
@@ -197,17 +191,16 @@ class DetectTab(QWidget):
         self.start_btn = QPushButton("开始检测")
         self.start_btn.setObjectName("success_btn")
         self.start_btn.clicked.connect(self._toggle_detection)
-        btn_row.addWidget(self.start_btn)
+        btn_row.addWidget(self.start_btn, 1)
 
         self.screenshot_btn = QPushButton("截图")
         self.screenshot_btn.clicked.connect(self._take_screenshot)
-        btn_row.addWidget(self.screenshot_btn)
+        btn_row.addWidget(self.screenshot_btn, 1)
+        btn_layout.addLayout(btn_row)
 
         self.minimize_btn = QPushButton("缩小到悬浮窗")
         self.minimize_btn.clicked.connect(self._minimize_to_floating)
-        btn_row.addWidget(self.minimize_btn)
-
-        btn_layout.addLayout(btn_row)
+        btn_layout.addWidget(self.minimize_btn)
 
         results_label = QLabel("检测结果:")
         results_label.setStyleSheet("color: #8888a8; font-size: 12px; margin-top: 8px;")

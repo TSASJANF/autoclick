@@ -18,8 +18,8 @@ from PySide6.QtCore import QRect, Qt, Signal, Slot
 from PySide6.QtGui import QBrush, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog,
-    QGroupBox, QHBoxLayout, QInputDialog, QLabel, QMessageBox, QPushButton,
-    QSplitter, QStyledItemDelegate, QTableWidget, QTableWidgetItem,
+    QGroupBox, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMessageBox,
+    QPushButton, QSplitter, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
 
@@ -85,11 +85,9 @@ class OpenCVTab(QWidget):
         self.template_table = QTableWidget(0, 4)
         self.template_table.setHorizontalHeaderLabels(["颜色", "名称", "阈值", "状态"])
         self.template_table.setItemDelegateForColumn(COL_COLOR, ColorDelegate(self.template_table))
-        self.template_table.setColumnWidth(COL_COLOR, 40)
-        self.template_table.setColumnWidth(COL_NAME, 100)
-        self.template_table.setColumnWidth(COL_THRESHOLD, 50)
-        self.template_table.setColumnWidth(COL_STATUS, 40)
-        self.template_table.horizontalHeader().setStretchLastSection(True)
+        header = self.template_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setStretchLastSection(True)
         self.template_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.template_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.template_table.currentCellChanged.connect(self._on_template_selected)

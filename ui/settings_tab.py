@@ -70,7 +70,9 @@ class SettingsTab(QWidget):
         self.window_capture_cb.toggled.connect(self._on_window_capture_toggled)
         win_layout.addRow(self.window_capture_cb)
 
-        win_combo_layout = QHBoxLayout()
+        win_combo_row = QWidget()
+        win_combo_layout = QHBoxLayout(win_combo_row)
+        win_combo_layout.setContentsMargins(0, 0, 0, 0)
         win_combo_layout.setSpacing(8)
         self.window_combo = QComboBox()
         self.window_combo.setEditable(True)
@@ -78,9 +80,11 @@ class SettingsTab(QWidget):
         self._load_window_list()
         refresh_btn = QPushButton("刷新窗口列表")
         refresh_btn.clicked.connect(self._load_window_list)
-        win_combo_layout.addWidget(self.window_combo)
+        win_combo_layout.addWidget(self.window_combo, 1)
         win_combo_layout.addWidget(refresh_btn)
-        win_layout.addRow("目标窗口:", win_combo_layout)
+        target_label = QLabel("目标窗口:")
+        target_label.setMinimumWidth(72)   # 防止窄窗口下表单标签列坍缩
+        win_layout.addRow(target_label, win_combo_row)
 
         self._update_window_controls_state()
         layout.addWidget(win_group)
@@ -120,8 +124,8 @@ class SettingsTab(QWidget):
 
         self.negative_ratio_label = QLabel(f"{self.negative_ratio_slider.value()}%")
         self.negative_ratio_label.setStyleSheet(
-            "color: #a5b4fc; font-weight: 600; min-width: 36px;")
-        self.negative_ratio_label.setFixedWidth(36)
+            "color: #a5b4fc; font-weight: 600;")
+        self.negative_ratio_label.setMinimumWidth(44)
         ratio_layout.addWidget(self.negative_ratio_label)
         neg_layout.addRow("负样本比例:", ratio_frame)
 

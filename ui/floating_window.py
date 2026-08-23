@@ -27,7 +27,7 @@ class FloatingWindow(QWidget):
             Qt.WindowStaysOnTopHint |
             Qt.Tool
         )
-        self.setFixedSize(260, 220)
+        self.setFixedSize(280, 250)
         self.setAttribute(Qt.WA_TranslucentBackground)
 
         # Main container with dark styling

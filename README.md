@@ -10,6 +10,9 @@ pip install -e .          # 或 pip install -r requirements.txt
 python main.py
 ```
 
+界面基于 **qt-material**（Material Design，MIT 协议）主题，语义按钮
+（主操作/成功/危险）由 `ui/theme.py` 叠加补充样式实现。
+
 ## 典型工作流
 
 1. **标注页**：新建样本集 → 截图（F12）采集屏幕 → 选择/新建目标 → 拖框标注 → 保存（S）
@@ -73,8 +76,10 @@ scripts/                 一次性维护脚本
 
 ```bash
 pip install -e .[dev]
-pytest                      # 67 个单元测试
-python tests/smoke_offscreen.py   # 离屏冒烟测试（完整构建主窗口）
+pytest                           # 78 个单元测试
+python tests/smoke_offscreen.py  # 离屏冒烟测试（完整构建主窗口）
+python tests/layout_audit.py     # 布局审计：自动检测文字截断
+python tests/visual_check.py     # 各页签截图输出到 logs/ui_shots/
 ```
 
 ## 数据目录

@@ -1,12 +1,12 @@
-"""应用入口：日志初始化、单实例锁、全局样式、QApplication 启动。
+"""应用入口：日志初始化、单实例锁、Material 主题、QApplication 启动。
 
 相对历史版本的改动：
 1. logging（控制台 + logs/app.log 轮转 + Qt 消息路由）——旧版全是
    print，GUI 进程无控制台时所有可诊断信息实际全部丢失；
 2. 单实例锁（SEC-02）：双开进程会相互覆盖 targets.json/sets_index.json
    （后写者抹掉先写者的全部变更），现以 QLocalServer 拒绝第二实例；
-3. 加载 ui/style.qss —— 该 633 行设计系统文件一直存在却从未被任何
-   代码引用，现在真正接上；
+3. 主题：qt-material（Material Design）+ 语义按钮补充样式
+   （ui/theme.py），取代从未被加载过的孤儿 style.qss；
 4. 启动时清理过期截图（SEC-03）。
 """
 
@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import sys
-from pathlib import Path
 
 from core.paths import APP_ROOT
 
@@ -75,27 +74,21 @@ def acquire_single_instance_lock(app):
     return server
 
 
-def load_stylesheet(app) -> None:
-    qss_path = Path(__file__).parent / "ui" / "style.qss"
-    if qss_path.exists():
-        app.setStyleSheet(qss_path.read_text(encoding="utf-8"))
-
-
 def main() -> int:
     setup_logging()
     logger = logging.getLogger("main")
 
     from PySide6.QtWidgets import QApplication, QMessageBox
     app = QApplication(sys.argv)
-    app.setStyle("Fusion")
+
+    from ui.theme import apply_theme
+    apply_theme(app)
 
     lock = acquire_single_instance_lock(app)
     if lock is None:
         QMessageBox.warning(None, "程序已在运行",
                             "自动点击工具已在运行中。\n双开会相互覆盖配置并导致数据丢失。")
         return 0
-
-    load_stylesheet(app)
 
     # 启动清理：过期截图（SEC-03）
     from core.data_lifecycle import cleanup_screenshots
