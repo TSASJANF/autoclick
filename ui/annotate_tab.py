@@ -177,6 +177,7 @@ class AnnotateTab(QWidget):
     def _build_target_card(self) -> CardWidget:
         card, lay = self._card("当前标注目标")
         self.target_table = TableWidget()
+        self.target_table.setColumnCount(2)
         self.target_table.setHorizontalHeaderLabels(["颜色", "名称"])
         self.target_table.setItemDelegateForColumn(0, ColorDelegate(self.target_table))
         header = self.target_table.horizontalHeader()

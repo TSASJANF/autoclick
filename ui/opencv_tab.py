@@ -100,6 +100,7 @@ class OpenCVTab(QWidget):
         card, lay = self._card("模板管理")
 
         self.template_table = TableWidget()
+        self.template_table.setColumnCount(4)
         self.template_table.setHorizontalHeaderLabels(["颜色", "名称", "阈值", "状态"])
         self.template_table.setItemDelegateForColumn(COL_COLOR, ColorDelegate(self.template_table))
         header = self.template_table.horizontalHeader()

@@ -9,7 +9,7 @@
     "active_tab": 0
   },
   "detect": {
-    "confidence": 80,
+    "confidence": 92,
     "fps": 30,
     "priority_enabled": true,
     "auto_click": true,

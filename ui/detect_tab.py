@@ -128,6 +128,7 @@ class DetectTab(QWidget):
         lay.addLayout(btn_row)
 
         self.target_table = TableWidget()
+        self.target_table.setColumnCount(5)
         self.target_table.setHorizontalHeaderLabels(["", "名称", "优先级", "模型", "样本集"])
         header = self.target_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -220,6 +221,7 @@ class DetectTab(QWidget):
     def _build_result_card(self) -> CardWidget:
         card, lay = self._card("检测结果")
         self.result_table = TableWidget()
+        self.result_table.setColumnCount(5)
         self.result_table.setHorizontalHeaderLabels(["目标", "来源", "置信度", "位置", "大小"])
         self.result_table.horizontalHeader().setStretchLastSection(True)
         self.result_table.setMinimumHeight(160)

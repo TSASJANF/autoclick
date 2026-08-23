@@ -332,3 +332,44 @@ Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.githu
 20:01:23 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt
 20:01:23 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt
 20:01:25 [CRITICAL] qt: QThread: Destroyed while thread '' is still running
+20:10:23 [INFO] ui.theme: 主题已应用: PySide6-Fluent-Widgets (accent=#5b8ff9)
+20:10:24 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt
+20:10:24 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt
+20:10:24 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt
+20:10:30 [INFO] core.detector: AI 模型已加载: D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt
+20:10:30 [INFO] core.detector: AI 模型已加载: D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt
+20:10:30 [INFO] core.detector: AI 模型已加载: D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt
+20:10:30 [INFO] ui.app_context: AI 模型就绪: 3 个
+20:10:30 [INFO] ui.detect_tab: AI 模型已加载: 翻锅
+20:10:30 [INFO] ui.detect_tab: AI 模型已加载: 收菜
+20:10:30 [INFO] ui.detect_tab: AI 模型已加载: 下锅
+20:12:28 [INFO] ui.theme: 主题已应用: PySide6-Fluent-Widgets (accent=#5b8ff9)
+20:12:28 [WARNING] qt: QFontDatabase: Cannot find font directory C:/Users/Administrator/AppData/Roaming/Python/Python312/site-packages/PySide6/lib/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+20:12:28 [WARNING] qt: This plugin does not support propagateSizeHints()
+20:12:28 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt
+20:12:28 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt
+20:12:28 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt
+20:12:29 [CRITICAL] qt: QThread: Destroyed while thread '' is still running
+20:13:44 [INFO] ui.theme: 主题已应用: PySide6-Fluent-Widgets (accent=#5b8ff9)
+20:13:44 [WARNING] qt: QFontDatabase: Cannot find font directory C:/Users/Administrator/AppData/Roaming/Python/Python312/site-packages/PySide6/lib/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+20:13:44 [WARNING] qt: This plugin does not support propagateSizeHints()
+20:13:44 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt
+20:13:44 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt
+20:13:44 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt
+20:13:45 [CRITICAL] qt: QThread: Destroyed while thread '' is still running
+20:14:06 [INFO] ui.theme: 主题已应用: PySide6-Fluent-Widgets (accent=#5b8ff9)
+20:14:06 [WARNING] qt: QFontDatabase: Cannot find font directory C:/Users/Administrator/AppData/Roaming/Python/Python312/site-packages/PySide6/lib/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+20:14:06 [WARNING] qt: This plugin does not support propagateSizeHints()
+20:14:06 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt
+20:14:06 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt
+20:14:06 [INFO] core.paths: 路径修复: D:\脚本\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt -> D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt
+20:14:12 [INFO] core.detector: AI 模型已加载: D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_1\runs\train-6\weights\best.pt
+20:14:12 [INFO] core.detector: AI 模型已加载: D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_2\runs\train-4\weights\best.pt
+20:14:12 [INFO] core.detector: AI 模型已加载: D:\jiaoben\代码审查\自动点击\runs\detect\data\targets\target_3\runs\train-3\weights\best.pt
+20:14:12 [INFO] ui.app_context: AI 模型就绪: 3 个
+20:14:12 [INFO] ui.detect_tab: AI 模型已加载: 翻锅
+20:14:12 [INFO] ui.detect_tab: AI 模型已加载: 收菜
+20:14:12 [INFO] ui.detect_tab: AI 模型已加载: 下锅
