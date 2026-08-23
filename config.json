@@ -1,0 +1,12 @@
+{
+  "screenshot_default_enabled": true,
+  "screenshot_default_path": "data/screenshots",
+  "screenshot_hide_window": false,
+  "targets": [],
+  "opencv_templates": [],
+  "window_capture_enabled": true,
+  "window_capture_title": "OPD2409_{8efa2b5c}",
+  "hotkey_toggle_detection": "F9",
+  "negative_sample_ratio": 20,
+  "negative_min_positive": 5
+}

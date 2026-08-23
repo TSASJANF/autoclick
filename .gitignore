@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+
+# Data & runtime artifacts (user data, not code)
+data/
+runs/
+*.pt
+*.pt.tmp
+
+# IDE / tooling
+.codegraph/
+.claude/

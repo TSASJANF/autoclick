@@ -1,0 +1,36 @@
+{
+  "window": {
+    "x": 22,
+    "y": -7,
+    "width": 1536,
+    "height": 800,
+    "maximized": false,
+    "active_tab": 0
+  },
+  "detect": {
+    "confidence": 80,
+    "fps": 6,
+    "priority_enabled": true,
+    "auto_click": true,
+    "floating_auto_switch": true
+  },
+  "annotate": {
+    "last_target_index": 0,
+    "selected_set_id": "set_1",
+    "last_target_id": "target_1"
+  },
+  "train": {
+    "epochs": 150,
+    "batch_size": 4,
+    "img_size": 1280,
+    "save_path": "",
+    "last_target_id": "target_1"
+  },
+  "opencv": {
+    "threshold": 1.0
+  },
+  "floating_window": {
+    "x": 1256,
+    "y": 576
+  }
+}
