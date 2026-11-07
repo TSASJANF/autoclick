@@ -54,10 +54,19 @@ class TestNms:
 
     def test_cross_source_dedupe(self):
         """both 模式：ai 与 opencv 命中同一物体时应合并为一个。"""
+        from core.detection_engine import DetectionEngine
         a = det("t", 0.95, 0, 0, 100, 100, source="ai")
         b = det("t", 0.80, 2, 2, 102, 102, source="opencv")
-        kept = nms([a, b], iou_threshold=0.5, same_target_only=False)
+        kept = DetectionEngine._dedupe_cross_source([a, b])
         assert len(kept) == 1 and kept[0].source == "ai"
+
+    def test_cross_source_dedupe_preserves_different_targets(self):
+        """不同目标的重叠框不应被跨源去重错误抑制。"""
+        from core.detection_engine import DetectionEngine
+        a = det("target_1", 0.95, 0, 0, 100, 100, source="ai")
+        b = det("target_2", 0.80, 2, 2, 102, 102, source="ai")
+        kept = DetectionEngine._dedupe_cross_source([a, b])
+        assert len(kept) == 2
 
 
 class TestDetectionGeometry:

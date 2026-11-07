@@ -191,7 +191,7 @@ class DetectionEngine:
     @staticmethod
     def _dedupe_cross_source(detections: list[Detection]) -> list[Detection]:
         """同目标 ai/opencv 双源重叠命中去重（保留高分）。"""
-        return nms(detections, iou_threshold=0.5)
+        return nms(detections, iou_threshold=0.5, same_target_only=True)
 
     def _capture(self) -> np.ndarray:
         if self._hide_hwnd:

@@ -73,8 +73,10 @@ class TemplateDetector:
                 continue  # 模板比图像还大，必然无匹配
 
             result = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
+            t_name = target_name if (tid == target_id or not target_id) else tid
+            t_color = color if (tid == target_id or not target_id) else ""
             detections.extend(self._extract_hits(
-                result, tw, th, threshold, tid, target_name, color))
+                result, tw, th, threshold, tid, t_name, t_color))
 
         # 同一目标内的重叠命中去重
         return nms(detections, iou_threshold=0.3, same_target_only=True)
