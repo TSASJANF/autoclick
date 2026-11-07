@@ -34,6 +34,17 @@ SETS_INDEX_FILE = SETS_DIR / "sets_index.json"
 _RE_ROOT_MARKERS = ("runs", "data")
 
 
+def _is_absolute_path(path_str: str) -> bool:
+    if not path_str:
+        return False
+    norm = path_str.replace("\\", "/")
+    if Path(norm).is_absolute():
+        return True
+    if len(norm) >= 2 and norm[0].isalpha() and norm[1] == ":":
+        return True
+    return False
+
+
 def resolve(path_str: str | os.PathLike | None) -> Path:
     """把存储层路径解析为基于 APP_ROOT 的绝对路径。
 
@@ -42,10 +53,10 @@ def resolve(path_str: str | os.PathLike | None) -> Path:
     """
     if not path_str:
         return Path()
-    p = Path(str(path_str))
-    if p.is_absolute():
-        return p
-    return (APP_ROOT / p).resolve()
+    norm = str(path_str).replace("\\", "/")
+    if _is_absolute_path(norm):
+        return Path(norm)
+    return (APP_ROOT / Path(norm)).resolve()
 
 
 def to_stored(path: str | os.PathLike | None) -> str:
@@ -55,8 +66,9 @@ def to_stored(path: str | os.PathLike | None) -> str:
     """
     if not path:
         return ""
-    p = Path(str(path))
-    if not p.is_absolute():
+    norm = str(path).replace("\\", "/")
+    p = Path(norm)
+    if not _is_absolute_path(norm):
         p = resolve(p)
     try:
         return p.relative_to(APP_ROOT).as_posix()
@@ -74,16 +86,16 @@ def repair(path_str: str | None) -> str:
     """
     if not path_str:
         return ""
-    p = Path(str(path_str))
+    norm = str(path_str).replace("\\", "/")
+    p = Path(norm)
     if p.exists():
         return to_stored(p)
-    if p.is_absolute():
-        normalized = p.as_posix()
+    if _is_absolute_path(norm):
         for marker in _RE_ROOT_MARKERS:
-            idx = normalized.find(f"/{marker}/")
+            idx = norm.find(f"/{marker}/")
             if idx != -1:
-                candidate = APP_ROOT / normalized[idx + 1:]
+                candidate = APP_ROOT / norm[idx + 1:]
                 if candidate.exists():
-                    logger.info("路径修复: %s -> %s", p, candidate)
+                    logger.info("路径修复: %s -> %s", path_str, candidate)
                     return to_stored(candidate)
     return str(path_str)
