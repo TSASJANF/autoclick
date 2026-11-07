@@ -22,10 +22,10 @@
 运行方式: python migrate_to_sets.py
 """
 
-import os
-import json
-import shutil
 import datetime
+import json
+import os
+import shutil
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -60,7 +60,7 @@ def migrate():
         print("\n[跳过] 未发现旧数据（data/shared_images/ 和 data/targets/ 均不存在）。")
         return
 
-    print(f"\n发现旧数据:")
+    print("\n发现旧数据:")
     if has_shared_images:
         image_count = len([f for f in os.listdir(OLD_SHARED_IMAGES)
                           if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp'))])
@@ -70,13 +70,13 @@ def migrate():
                       if os.path.isdir(os.path.join(OLD_TARGETS_DIR, d))]
         print(f"  • data/targets/ — {len(target_dirs)} 个目标")
     if has_session:
-        print(f"  • data/session.json — 标注会话")
+        print("  • data/session.json — 标注会话")
     if has_targets_json:
-        print(f"  • targets.json — 目标配置")
+        print("  • targets.json — 目标配置")
 
     # Confirm
-    print(f"\n将创建默认样本集 '默认样本集' 并迁移所有数据。")
-    print(f"旧数据将备份到 data/_backup_before_migration/")
+    print("\n将创建默认样本集 '默认样本集' 并迁移所有数据。")
+    print("旧数据将备份到 data/_backup_before_migration/")
     resp = input("\n确认开始迁移？(y/n): ").strip().lower()
     if resp != 'y':
         print("已取消。")
@@ -87,16 +87,16 @@ def migrate():
     os.makedirs(BACKUP_DIR, exist_ok=True)
     if has_shared_images:
         shutil.copytree(OLD_SHARED_IMAGES, os.path.join(BACKUP_DIR, "shared_images"))
-        print(f"  备份 shared_images/")
+        print("  备份 shared_images/")
     if has_targets:
         shutil.copytree(OLD_TARGETS_DIR, os.path.join(BACKUP_DIR, "targets"))
-        print(f"  备份 targets/")
+        print("  备份 targets/")
     if has_session:
         shutil.copy2(OLD_SESSION_FILE, os.path.join(BACKUP_DIR, "session.json"))
-        print(f"  备份 session.json")
+        print("  备份 session.json")
     if has_targets_json:
         shutil.copy2(TARGETS_FILE, os.path.join(BACKUP_DIR, "targets.json"))
-        print(f"  备份 targets.json")
+        print("  备份 targets.json")
 
     # Step 2: Create sample set directory structure
     print("\n[2/6] 创建样本集目录...")
@@ -137,7 +137,7 @@ def migrate():
     # Step 5: Update targets.json
     print("\n[5/6] 更新 targets.json...")
     if has_targets_json:
-        with open(TARGETS_FILE, "r", encoding="utf-8") as f:
+        with open(TARGETS_FILE, encoding="utf-8") as f:
             targets = json.load(f)
         for t in targets:
             # Add set_id field
@@ -175,12 +175,12 @@ def migrate():
     set_session_file = os.path.join(set_dir, "session.json")
     if has_session:
         shutil.move(OLD_SESSION_FILE, set_session_file)
-        print(f"  移动 session.json")
+        print("  移动 session.json")
     else:
         # Create empty session
         with open(set_session_file, "w", encoding="utf-8") as f:
             json.dump({"image_list": [], "current_index": -1}, f)
-        print(f"  创建空 session.json")
+        print("  创建空 session.json")
 
     # Create set.json
     set_data = {
@@ -193,28 +193,28 @@ def migrate():
     set_json_path = os.path.join(set_dir, "set.json")
     with open(set_json_path, "w", encoding="utf-8") as f:
         json.dump(set_data, f, ensure_ascii=False, indent=2)
-    print(f"  创建 set.json")
+    print("  创建 set.json")
 
     # Create sets_index.json
     sets_index = [set_data]
     sets_index_path = os.path.join(SETS_ROOT, "sets_index.json")
     with open(sets_index_path, "w", encoding="utf-8") as f:
         json.dump(sets_index, f, ensure_ascii=False, indent=2)
-    print(f"  创建 sets_index.json")
+    print("  创建 sets_index.json")
 
     # Summary
     print("\n" + "=" * 60)
     print("迁移完成!")
     print("=" * 60)
-    print(f"\n新目录结构:")
+    print("\n新目录结构:")
     print(f"  data/sets/{set_id}/")
-    print(f"    images/       — 图片")
-    print(f"    targets/      — 目标标注")
-    print(f"    session.json  — 标注会话")
-    print(f"    set.json      — 样本集元数据")
-    print(f"\n备份位置: data/_backup_before_migration/")
-    print(f"\n旧目录（shared_images/、targets/）中的文件已被移走。")
-    print(f"如确认迁移无误，可手动删除备份目录。")
+    print("    images/       — 图片")
+    print("    targets/      — 目标标注")
+    print("    session.json  — 标注会话")
+    print("    set.json      — 样本集元数据")
+    print("\n备份位置: data/_backup_before_migration/")
+    print("\n旧目录（shared_images/、targets/）中的文件已被移走。")
+    print("如确认迁移无误，可手动删除备份目录。")
 
 
 if __name__ == "__main__":

@@ -93,7 +93,7 @@ class TestPrepareTrainingDir:
         ds.prepare_training_dir(ds_dir, ["class_0"], images_dir, seed=1)
         # 模拟训练中断：train_data 残留
 
-        second = ds.prepare_training_dir(
+        ds.prepare_training_dir(
             ds_dir, ["class_0"], images_dir, negative_ratio=0, seed=2)
         for split in ("train", "val"):
             labels = os.listdir(os.path.join(ds_dir, "train_data", "labels", split))

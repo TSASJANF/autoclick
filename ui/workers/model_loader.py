@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from PySide6.QtCore import QThread, Signal
 

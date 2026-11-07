@@ -14,13 +14,30 @@ import shutil
 from PySide6.QtCore import QRect, Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QFileDialog, QHBoxLayout, QHeaderView,
-    QInputDialog, QLabel, QListWidget, QListWidgetItem, QMenu, QMessageBox,
-    QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView,
+    QComboBox,
+    QFileDialog,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QListWidget,
+    QListWidgetItem,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 from qfluentwidgets import (
-    BodyLabel, CardWidget, FluentIcon, PrimaryPushButton, PushButton,
-    ScrollArea, SubtitleLabel, TableWidget,
+    BodyLabel,
+    CardWidget,
+    FluentIcon,
+    PrimaryPushButton,
+    PushButton,
+    ScrollArea,
+    SubtitleLabel,
+    TableWidget,
 )
 
 from core import annotations as anno

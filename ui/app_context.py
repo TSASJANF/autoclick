@@ -165,7 +165,7 @@ class AppContext:
         args_file = os.path.join(os.path.dirname(os.path.dirname(model_path)),
                                  "args.yaml")
         try:
-            with open(args_file, "r", encoding="utf-8") as f:
+            with open(args_file, encoding="utf-8") as f:
                 for line in f:
                     if line.strip().startswith("model:"):
                         val = line.split(":", 1)[1].strip()

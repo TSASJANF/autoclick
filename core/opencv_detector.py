@@ -12,8 +12,6 @@
 from __future__ import annotations
 
 import logging
-import os
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -55,7 +53,7 @@ class TemplateDetector:
 
     def detect(self, image: np.ndarray, target_id: str = "",
                target_name: str = "", color: str = "",
-               threshold_override: Optional[float] = None) -> list[Detection]:
+               threshold_override: float | None = None) -> list[Detection]:
         """对给定目标 ID 列表（缺省为全部已加载模板）做模板匹配。"""
         ids = [target_id] if target_id else list(self.templates.keys())
         detections: list[Detection] = []

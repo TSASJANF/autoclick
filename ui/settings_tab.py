@@ -9,13 +9,29 @@ import logging
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QFileDialog, QHBoxLayout, QLabel, QMessageBox, QVBoxLayout, QWidget,
+    QComboBox,
+    QFileDialog,
+    QHBoxLayout,
+    QKeySequenceEdit,
+    QLabel,
+    QMessageBox,
+    QVBoxLayout,
+    QWidget,
 )
 from qfluentwidgets import (
-    BodyLabel, CardWidget, CheckBox, FluentIcon, LineEdit, PrimaryPushButton,
-    PushButton, ScrollArea, Slider, SpinBox, SubtitleLabel, SwitchButton,
+    BodyLabel,
+    CardWidget,
+    CheckBox,
+    FluentIcon,
+    LineEdit,
+    PrimaryPushButton,
+    PushButton,
+    ScrollArea,
+    Slider,
+    SpinBox,
+    SubtitleLabel,
+    SwitchButton,
 )
-from PySide6.QtWidgets import QKeySequenceEdit
 
 from core.windows import list_visible_windows
 from ui.app_context import AppContext

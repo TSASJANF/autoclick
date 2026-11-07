@@ -115,7 +115,6 @@ class ScreenCapture:
         if hr == 0:
             rect = dwm_rect
 
-        x, y = rect.left, rect.top
         w, h = rect.right - rect.left, rect.bottom - rect.top
         if w <= 0 or h <= 0:
             raise CaptureError(f"窗口尺寸无效: {w}x{h}")

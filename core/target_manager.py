@@ -11,11 +11,9 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
 
-from . import paths
-from . import json_store
-from .models import Target, TARGET_COLORS
+from . import json_store, paths
+from .models import TARGET_COLORS, Target
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +48,7 @@ class TargetManager:
 
     # ── 查询 ──────────────────────────────────────────────────────────
 
-    def get(self, target_id: str) -> Optional[Target]:
+    def get(self, target_id: str) -> Target | None:
         return next((t for t in self.targets if t.id == target_id), None)
 
     def get_enabled(self) -> list[Target]:

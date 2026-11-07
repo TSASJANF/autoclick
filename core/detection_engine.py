@@ -18,7 +18,6 @@ ParallelDetectThread（两者约 200 行重复代码）。
 from __future__ import annotations
 
 import logging
-import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 

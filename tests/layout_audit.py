@@ -6,8 +6,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PySide6.QtWidgets import (
-    QApplication, QAbstractItemView, QCheckBox, QComboBox, QGroupBox,
-    QLabel, QPushButton, QRadioButton, QTableWidget, QTabWidget, QListWidget,
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QGroupBox,
+    QLabel,
+    QPushButton,
+    QRadioButton,
+    QTableWidget,
 )
 
 
@@ -64,7 +70,7 @@ def walk(w, path, issues):
     audit_widget(w, path, issues)
     if isinstance(w, QTableWidget):
         audit_table(w, path, issues)
-    for child in w.findChildren(type(w)) if False else w.findChildren(QLabel) + \
+    for _child in w.findChildren(type(w)) if False else w.findChildren(QLabel) + \
             w.findChildren(QCheckBox) + w.findChildren(QPushButton) + \
             w.findChildren(QComboBox) + w.findChildren(QTableWidget):
         pass

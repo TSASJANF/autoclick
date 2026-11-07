@@ -13,14 +13,18 @@ from __future__ import annotations
 import logging
 import os
 
-from PySide6.QtCore import Qt, QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal, Slot
 from qfluentwidgets import (
-    FluentIcon, FluentWindow, InfoBar, InfoBarPosition, NavigationItemPosition,
+    FluentIcon,
+    FluentWindow,
+    InfoBar,
+    InfoBarPosition,
+    NavigationItemPosition,
 )
 
 from core.hotkey import HotkeyWatcher
-from ui.app_context import AppContext
 from ui.annotate_tab import AnnotateTab
+from ui.app_context import AppContext
 from ui.detect_tab import DetectTab
 from ui.dialogs import AddTargetDialog
 from ui.floating_window import FloatingWindow

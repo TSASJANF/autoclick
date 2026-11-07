@@ -11,11 +11,26 @@ import os
 
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
-    QComboBox, QFileDialog, QHBoxLayout, QLabel, QMessageBox, QVBoxLayout, QWidget,
+    QComboBox,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QVBoxLayout,
+    QWidget,
 )
 from qfluentwidgets import (
-    BodyLabel, CardWidget, FluentIcon, LineEdit, PrimaryPushButton,
-    ProgressBar, PushButton, ScrollArea, SpinBox, SubtitleLabel, TextEdit,
+    BodyLabel,
+    CardWidget,
+    FluentIcon,
+    LineEdit,
+    PrimaryPushButton,
+    ProgressBar,
+    PushButton,
+    ScrollArea,
+    SpinBox,
+    SubtitleLabel,
+    TextEdit,
 )
 
 from core import dataset as ds

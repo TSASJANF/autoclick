@@ -6,8 +6,7 @@
 
 from __future__ import annotations
 
-from . import json_store
-from . import paths
+from . import json_store, paths
 
 DEFAULT_CONFIG = {
     "schema_version": 1,

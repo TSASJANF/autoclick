@@ -5,9 +5,9 @@ import os
 
 from core import paths
 from core.config import load_config, save_config
-from core.state_manager import load_state, save_state, DEFAULT_STATE
-from core.target_manager import TargetManager
 from core.sample_set_manager import SampleSetManager
+from core.state_manager import DEFAULT_STATE, load_state, save_state
+from core.target_manager import TargetManager
 
 
 class TestConfig:

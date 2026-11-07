@@ -12,13 +12,29 @@ import numpy as np
 from PySide6.QtCore import QRect, Qt, Slot
 from PySide6.QtGui import QBrush, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QAbstractItemView, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout,
-    QHeaderView, QInputDialog, QLabel, QMessageBox, QTableWidgetItem,
-    QVBoxLayout, QWidget,
+    QAbstractItemView,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QMessageBox,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 from qfluentwidgets import (
-    BodyLabel, CardWidget, DoubleSpinBox, FluentIcon, PrimaryPushButton,
-    PushButton, ScrollArea, SubtitleLabel, TableWidget,
+    BodyLabel,
+    CardWidget,
+    DoubleSpinBox,
+    FluentIcon,
+    PrimaryPushButton,
+    PushButton,
+    ScrollArea,
+    SubtitleLabel,
+    TableWidget,
 )
 
 from core.capture import CaptureError, ScreenCapture

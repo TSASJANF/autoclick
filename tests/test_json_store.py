@@ -1,7 +1,5 @@
 """core.json_store 单元测试：原子写、损坏备份、默认值合并。"""
 
-import json
-import os
 
 from core import json_store
 

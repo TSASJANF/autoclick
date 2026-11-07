@@ -6,10 +6,8 @@ import datetime
 import logging
 import os
 import shutil
-from typing import Optional
 
-from . import paths
-from . import json_store
+from . import json_store, paths
 from .models import SampleSet
 
 logger = logging.getLogger(__name__)
@@ -69,7 +67,7 @@ class SampleSetManager:
 
     # ── 查询 ──────────────────────────────────────────────────────────
 
-    def get(self, set_id: str) -> Optional[SampleSet]:
+    def get(self, set_id: str) -> SampleSet | None:
         return next((s for s in self.sets if s.id == set_id), None)
 
     def get_all(self) -> list[SampleSet]:

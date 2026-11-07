@@ -2,7 +2,6 @@
 
 import os
 import time
-from pathlib import Path
 
 from core.annotations import labeled_stems_map, status_from_stems
 from core.detection_engine import select_click_targets

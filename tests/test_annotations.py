@@ -1,6 +1,5 @@
 """core.annotations 单元测试：标注读写往返、归属键、状态批量查询。"""
 
-import os
 
 from core import annotations as anno
 

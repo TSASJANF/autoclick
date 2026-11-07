@@ -25,7 +25,7 @@ def read_json(path: str | os.PathLike, default: Any) -> Any:
     if not os.path.exists(path):
         return default
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError as e:
         backup = f"{path}.corrupt-{datetime.datetime.now():%Y%m%d_%H%M%S}"

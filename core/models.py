@@ -7,9 +7,7 @@ core.opencv_detector.OpenCVDetection、ui.detect_tab.DetectionResult），
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass, asdict, field
-from typing import Optional
+from dataclasses import asdict, dataclass
 
 # 检测模式白名单
 DETECTION_MODES = ("ai", "opencv", "both")
@@ -47,7 +45,7 @@ class Detection:
     def height(self) -> int:
         return self.y2 - self.y1
 
-    def iou(self, other: "Detection") -> float:
+    def iou(self, other: Detection) -> float:
         """与另一检测框的交并比。"""
         ix1, iy1 = max(self.x1, other.x1), max(self.y1, other.y1)
         ix2, iy2 = min(self.x2, other.x2), min(self.y2, other.y2)
@@ -107,7 +105,7 @@ class Target:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Target":
+    def from_dict(cls, d: dict) -> Target:
         known = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
         if known.get("detection_mode") not in DETECTION_MODES:
             known["detection_mode"] = "ai"
@@ -128,5 +126,5 @@ class SampleSet:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "SampleSet":
+    def from_dict(cls, d: dict) -> SampleSet:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})

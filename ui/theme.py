@@ -50,7 +50,7 @@ QLabel#heading {{ font-size: 18px; font-weight: 600; color: #e8e8f0; }}
 
 def apply_theme(app) -> None:
     """应用 Fluent 暗色主题 + 主色 + 语义按钮补充样式。"""
-    from qfluentwidgets import setTheme, setThemeColor, Theme
+    from qfluentwidgets import Theme, setTheme, setThemeColor
     setTheme(Theme.DARK)
     setThemeColor(ACCENT)
     app.setStyleSheet(app.styleSheet() + SUPPLEMENT_QSS)

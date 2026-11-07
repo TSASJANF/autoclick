@@ -59,7 +59,7 @@ def get_dataset_stats(dataset_dir: str, images_dir: str) -> dict:
 
     class_counts: dict[int, int] = {}
     for fname in labels:
-        with open(os.path.join(labels_dir, fname), "r", encoding="utf-8") as f:
+        with open(os.path.join(labels_dir, fname), encoding="utf-8") as f:
             for line in f:
                 parts = line.strip().split()
                 if parts:

@@ -5,10 +5,8 @@
 
 import numpy as np
 
+from core.hotkey import MOD_CONTROL, MOD_SHIFT, parse_key
 from core.image_io import imwrite
-
-from core.hotkey import parse_key, MOD_CONTROL, MOD_SHIFT
-from core.models import Detection
 from core.opencv_detector import TemplateDetector
 
 
@@ -50,7 +48,6 @@ class TestTemplateDetector:
     def test_finds_exact_match(self, tmp_path):
         img, template = self._img_with_square()
         tpath = str(tmp_path / "t.png")
-        import cv2
         imwrite(tpath, template)
 
         det = TemplateDetector()
@@ -62,7 +59,6 @@ class TestTemplateDetector:
 
     def test_no_match_when_absent(self, tmp_path):
         """图中不存在模板时，常规阈值下应零命中。"""
-        import cv2
         rng = np.random.default_rng(42)
         img = rng.integers(0, 40, (100, 100, 3), dtype=np.uint8)
         # 模板亮度与内容完全不同，不可能高分匹配
@@ -78,7 +74,6 @@ class TestTemplateDetector:
         assert det.load_template("t1", str(tmp_path / "nope.png")) is False
 
     def test_template_larger_than_image_skipped(self, tmp_path):
-        import cv2
         template = np.full((300, 300, 3), 128, dtype=np.uint8)
         tpath = str(tmp_path / "big.png")
         imwrite(tpath, template)
@@ -89,7 +84,6 @@ class TestTemplateDetector:
 
     def test_duplicate_hits_suppressed(self, tmp_path):
         """重叠的重复命中必须被抑制为单个框（历史性能炸弹回归测试）。"""
-        import cv2
         rng = np.random.default_rng(7)
         template = rng.integers(100, 255, (20, 20, 3), dtype=np.uint8)
         img = rng.integers(0, 40, (200, 200, 3), dtype=np.uint8)

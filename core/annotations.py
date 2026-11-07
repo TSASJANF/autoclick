@@ -8,8 +8,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from . import paths
 
@@ -68,7 +68,7 @@ def read_labels(label_path: str, img_w: int, img_h: int,
     if not os.path.exists(label_path):
         return []
     boxes = []
-    with open(label_path, "r", encoding="utf-8") as f:
+    with open(label_path, encoding="utf-8") as f:
         for line in f:
             parts = line.strip().split()
             if len(parts) < 5:
@@ -149,7 +149,7 @@ def read_class_ids(labels_dir: str) -> set[int]:
     for fname in os.listdir(labels_dir):
         if not fname.endswith(".txt"):
             continue
-        with open(os.path.join(labels_dir, fname), "r", encoding="utf-8") as f:
+        with open(os.path.join(labels_dir, fname), encoding="utf-8") as f:
             for line in f:
                 parts = line.strip().split()
                 if parts:

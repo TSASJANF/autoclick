@@ -16,12 +16,30 @@ import numpy as np
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QHeaderView, QHBoxLayout, QInputDialog,
-    QLabel, QMessageBox, QPushButton, QMenu, QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView,
+    QComboBox,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 from qfluentwidgets import (
-    BodyLabel, CaptionLabel, CardWidget, CheckBox, FluentIcon,
-    PrimaryPushButton, PushButton, ScrollArea, Slider, SpinBox, SubtitleLabel,
+    BodyLabel,
+    CardWidget,
+    CheckBox,
+    FluentIcon,
+    PrimaryPushButton,
+    PushButton,
+    ScrollArea,
+    Slider,
+    SpinBox,
+    SubtitleLabel,
     TableWidget,
 )
 
@@ -388,7 +406,7 @@ class DetectTab(QWidget):
 
     def _on_models_failed(self, errors: list):
         self.ctx.apply_failed_models(errors)
-        for target_id, model_path, err in errors:
+        for target_id, _model_path, err in errors:
             t = self.tm.get(target_id)
             name = t.name if t else target_id
             self.status_message.emit(f"模型加载失败 [{name}]: {err}")
