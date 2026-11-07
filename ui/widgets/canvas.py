@@ -101,6 +101,7 @@ class ImageCanvas(QLabel):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._overlay.setGeometry(self.rect())
+        self._render()
 
     def sizeHint(self):
         return self.minimumSize()
