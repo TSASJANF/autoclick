@@ -23,9 +23,10 @@ import numpy as np
 from . import windows
 from .image_io import imwrite
 
-user32 = ctypes.windll.user32
-gdi32 = ctypes.windll.gdi32
-dwmapi = ctypes.windll.dwmapi
+windll = getattr(ctypes, "windll", None)
+user32 = windll.user32 if windll else None
+gdi32 = windll.gdi32 if windll else None
+dwmapi = windll.dwmapi if windll else None
 
 PW_RENDERFULLCONTENT = 0x00000002  # Win10+：即使被遮挡也渲染窗口内容
 SRCCOPY = 0x00CC0020
@@ -84,13 +85,13 @@ class ScreenCapture:
 
     def capture_hide_window(self, hwnd: int = 0) -> np.ndarray:
         """隐藏指定窗口后截全屏（避免截到自身），随后恢复。"""
-        if hwnd:
+        if hwnd and user32 is not None:
             user32.ShowWindow(hwnd, 0)  # SW_HIDE
             time.sleep(0.05)
         try:
             return self.capture_full()
         finally:
-            if hwnd:
+            if hwnd and user32 is not None:
                 user32.ShowWindow(hwnd, 5)  # SW_SHOW
 
     # ── 窗口采集（PrintWindow，同 OBS Win10 采集方式）─────────────────
@@ -101,6 +102,8 @@ class ScreenCapture:
         抛出 CaptureError 而非静默降级为全屏 —— 全屏图像与窗口坐标不
         匹配会导致点击位置错乱。
         """
+        if user32 is None or gdi32 is None or dwmapi is None:
+            raise CaptureError("Win32 API 不可用（非 Windows 平台）")
         rect = wintypes.RECT()
         user32.GetWindowRect(hwnd, ctypes.byref(rect))
 

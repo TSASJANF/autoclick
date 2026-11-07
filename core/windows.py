@@ -6,7 +6,7 @@ import ctypes
 import os
 from ctypes import wintypes
 
-user32 = ctypes.windll.user32
+user32 = getattr(ctypes, "windll", None).user32 if hasattr(ctypes, "windll") else None
 
 # 常见的无意义顶层窗口标题
 _EXCLUDED_TITLES = {"Default IME", "MSCTFIME UI", ""}
@@ -20,6 +20,8 @@ def get_foreground_hwnd(own_process_only: bool = True) -> int:
     取前台窗口，用户在游戏里按 F12 时会每帧隐藏-恢复游戏窗口。
     前台不是本进程窗口时返回 0（调用方按不隐藏处理）。
     """
+    if user32 is None:
+        return 0
     hwnd = user32.GetForegroundWindow()
     if not hwnd:
         return 0
@@ -32,6 +34,8 @@ def get_foreground_hwnd(own_process_only: bool = True) -> int:
 
 
 def get_window_title(hwnd: int) -> str:
+    if user32 is None:
+        return ""
     length = user32.GetWindowTextLengthW(hwnd)
     buf = ctypes.create_unicode_buffer(length + 1)
     user32.GetWindowTextW(hwnd, buf, length + 1)
@@ -39,6 +43,9 @@ def get_window_title(hwnd: int) -> str:
 
 
 def _enum_windows(callback) -> None:
+    if user32 is None:
+        return
+
     @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
     def shim(hwnd, _):
         return callback(hwnd)
@@ -48,6 +55,8 @@ def _enum_windows(callback) -> None:
 
 def find_window(title_part: str) -> int:
     """按标题关键字查找可见顶层窗口，未找到返回 0。"""
+    if user32 is None:
+        return 0
     result = [0]
     needle = title_part.lower()
 
@@ -64,6 +73,8 @@ def find_window(title_part: str) -> int:
 
 def list_visible_windows() -> list[tuple[int, str]]:
     """列出所有有标题的可见顶层窗口。"""
+    if user32 is None:
+        return []
     windows: list[tuple[int, str]] = []
 
     def callback(hwnd: int) -> bool:

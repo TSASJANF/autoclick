@@ -23,7 +23,7 @@ SM_YVIRTUALSCREEN = 77
 SM_CXVIRTUALSCREEN = 78
 SM_CYVIRTUALSCREEN = 79
 
-user32 = ctypes.windll.user32
+user32 = getattr(ctypes, "windll", None).user32 if hasattr(ctypes, "windll") else None
 
 
 class MOUSEINPUT(ctypes.Structure):
@@ -49,6 +49,8 @@ class INPUT(ctypes.Structure):
 
 def virtual_screen_rect() -> tuple[int, int, int, int]:
     """返回 (x, y, w, h)：整个虚拟桌面的原点与尺寸（供安全边界判定）。"""
+    if user32 is None:
+        return (0, 0, 1920, 1080)
     return (
         user32.GetSystemMetrics(SM_XVIRTUALSCREEN),
         user32.GetSystemMetrics(SM_YVIRTUALSCREEN),
@@ -66,6 +68,8 @@ def _to_absolute(x: int, y: int) -> tuple[int, int]:
 
 
 def _send_input(*inputs: INPUT) -> None:
+    if user32 is None:
+        return
     n = len(inputs)
     arr = (INPUT * n)(*inputs)
     user32.SendInput(n, arr, ctypes.sizeof(INPUT))
@@ -73,6 +77,8 @@ def _send_input(*inputs: INPUT) -> None:
 
 def click(x: int, y: int, move_first: bool = True) -> None:
     """在屏幕像素坐标 (x, y) 处模拟一次左键点击。"""
+    if user32 is None:
+        return
     abs_x, abs_y = _to_absolute(x, y)
     flags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
     inputs: list[INPUT] = []

@@ -9,11 +9,11 @@ UI 层完成（ui/main_window.HotkeyBridge）。
 
 from __future__ import annotations
 
+import ctypes
 import threading
 import time
-import ctypes
 
-user32 = ctypes.windll.user32
+user32 = getattr(ctypes, "windll", None).user32 if hasattr(ctypes, "windll") else None
 
 MOD_ALT = 0x0001
 MOD_CONTROL = 0x0002
@@ -122,6 +122,8 @@ class HotkeyWatcher:
 
     def _is_down(self) -> bool:
         """所有要求的修饰键与主键同时按下时为 True。"""
+        if user32 is None or self._vk is None:
+            return False
         for mod_flag, vk_codes in _MOD_KEYS.items():
             if self._mods & mod_flag:
                 if not any(user32.GetAsyncKeyState(vk) & 0x8000 for vk in vk_codes):
